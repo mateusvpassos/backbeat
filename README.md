@@ -51,6 +51,14 @@ git clone --depth 1 --branch 8.0.15 https://github.com/juce-framework/JUCE.git e
 
 O executável fica em `build\Backbeat_artefacts\Release\Backbeat.exe` (runtime estático, roda sozinho).
 
+### Instalar
+```powershell
+.\scripts\install.ps1             # compila, copia para %LOCALAPPDATA%\Programs\Backbeat e cria atalhos (área de trabalho e menu Iniciar)
+.\scripts\install.ps1 -NoBuild    # instala o build que já existe
+.\scripts\install.ps1 -Uninstall  # remove programa e atalhos (seus dados em %APPDATA%\Backbeat ficam)
+```
+Não precisa de administrador. Feche o Backbeat antes de reinstalar.
+
 ### ASIO
 O JUCE 8.0.15 já traz os arquivos do **ASIO SDK da Steinberg** (licença GPLv3, liberada pela Steinberg em out/2025). O build só liga `JUCE_ASIO=1` no `CMakeLists.txt`, sem download separado. Para usar outra versão do SDK: `JUCE_ASIO_USE_EXTERNAL_SDK=1` e adicione a pasta `common/` do SDK aos includes.
 
