@@ -1,0 +1,26 @@
+# Backbeat
+
+Host de bateria eletrônica: EDRUM (MIDI) → SSD5 (VST3) → Behringer (ASIO). Futuro: captura do Chrome (WASAPI loopback por processo), entradas da Behringer, mixer e gravação em faixas.
+
+C++20 / JUCE 8.0.15 / CMake (gerador VS 2026). Interface em português do Brasil.
+
+## Comandos
+```powershell
+.\scripts\build.ps1 -Test   # compila Release + testes (BackbeatTests)
+.\scripts\build.ps1 -Run    # compila e abre
+```
+
+## Regras
+- **Thread de áudio** (`AudioEngine::audioDeviceIOCallbackWithContext` e tudo que ela chama): sem alocação, sem lock bloqueante (só `tryLock`), sem I/O, sem log. Comunicação por `SpscQueue` (um produtor, um consumidor) e atômicos.
+- Disco sempre em thread separada (`DiskWriter`).
+- O plugin só é trocado pela thread de mensagens via `AudioEngine::setPlugin`. A janela do plugin é destruída antes do plugin.
+- **Textos com acento:** `juce::String` trata `const char*` como ASCII (acento vira lixo). Use `L"..."` (o projeto compila com `/utf-8`) ou `juce::String::fromUTF8 ("...")`. Mensagens de `static_assert` sem acento.
+- Não usar `juce::String::indexOf/substring` em laço sobre textos grandes (UTF-8, acesso linear): converter para `std::string`.
+- Mapeamento: o perfil vira uma `MappingTable` (POD) publicada por `SeqLock` para a thread MIDI. Teclado do PC e botão "testar" entram por `AudioEngine::pushUiMidi` (fila separada; cada `SpscQueue` tem um produtor só).
+- Gravação: `DiskWriter` (FIFO lock-free + thread que acorda sozinha; nunca `ThreadedWriter`, que chama `notify()` do áudio). Transporte por pedidos atômicos aplicados no início do bloco; recursos só são liberados depois de `takeResourcesReleased()`. Bloco sem plugin grava silêncio (o WAV nunca encurta). `tests/RecordingTests.cpp` roda o AudioEngine com dispositivo e plugin falsos e confere MIDI x WAV amostra a amostra.
+- Chrome: `ProcessLoopbackCapture` (COM/WASAPI numa thread própria, formato na taxa do ASIO) → `LoopbackStream` (FIFO lock-free) → `DriftResampler` na thread de áudio (Lagrange + PI no nível do FIFO, alvo 40 ms). `AudioEngine::setChromeStream` usa handshake seq_cst; só destrua o stream depois que ele voltar. `tests/DriftTests.cpp` simula 30 min com deriva.
+- Títulos em maiúsculas: `theme::upper()` (o `toUpperCase` do JUCE não converte ç/í).
+- Teclas no Windows: o JUCE marca F1–F12/setas com o bit 0x10000; nunca converter minúscula→maiúscula sem checar esse bit (o F9 é 0x78 = 'x'). Coberto em `tests/HotkeyTests.cpp`.
+- Testes de ponta a ponta no app: `BACKBEAT_DATA` temporário com `gravacao.pasta` também temporária, para não escrever em `Música\Backbeat`.
+- Dados de teste isolados: `BACKBEAT_DATA=<pasta temporária>`. Nunca mexa no `%APPDATA%\Backbeat` real.
+- `external/` (JUCE) e `build/` ficam fora do git.
