@@ -26,4 +26,4 @@ C++20 / JUCE 8.0.15 / CMake (gerador VS 2026). Interface em português do Brasil
 - `external/` (JUCE) e `build/` ficam fora do git.
 
 ## Fluxo
-Ao terminar uma mudança: `.\scriptsuild.ps1 -Test`, conferir a tela (dados de teste isolados), commit + push na `main` (repo privado `mateusvpassos/backbeat`) e reinstalar com `.\scripts\install.ps1 -NoBuild` (o app precisa estar fechado).
+Ao terminar uma mudança: `.\scripts\build.ps1 -Test`, conferir a tela (dados de teste isolados), commit + push na `main` (repo privado `mateusvpassos/backbeat`) e reinstalar com `.\scripts\install.ps1 -NoBuild` (o app precisa estar fechado).
