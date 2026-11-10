@@ -63,6 +63,7 @@ target_sources(Backbeat PRIVATE
     src/engine/AudioEngine.cpp
     src/engine/DriftResampler.cpp
     src/engine/PluginHost.cpp
+    src/engine/PluginFiles.cpp
     src/capture/ProcessLoopbackCapture.cpp
     src/capture/ChromeCapture.cpp
     src/engine/MidiInputRouter.cpp
@@ -123,6 +124,7 @@ target_sources(BackbeatTests PRIVATE
     tests/MetronomeTests.cpp
     src/engine/AudioEngine.cpp
     src/engine/DriftResampler.cpp
+    src/engine/PluginFiles.cpp
     src/input/GlobalHotkeys.cpp
     src/mapping/DrumCatalog.cpp
     src/mapping/MappingProfile.cpp

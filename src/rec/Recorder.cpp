@@ -256,7 +256,7 @@ void Recorder::finishRecording()
     {
         auto* t = new juce::DynamicObject();
         t->setProperty ("tipo", "audio");
-        t->setProperty ("nome", "Bateria (SSD5)");
+        t->setProperty ("nome", "Bateria (" + (currentMeta.plugin.isNotEmpty() ? currentMeta.plugin : juce::String ("plugin")) + ")");
         t->setProperty ("arquivo", "bateria.wav");
         t->setProperty ("canais", 2);
         t->setProperty ("bits", 24);

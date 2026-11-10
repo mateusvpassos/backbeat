@@ -16,8 +16,8 @@ namespace bb
 // Orquestra gravação e reprodução na thread de mensagens (o AudioEngine faz a parte de tempo real).
 //
 // Cada gravação vira uma pasta <pasta de gravações>/AAAA-MM-DD HH-MM-SS/ com:
-//   bateria.mid   notas que o SSD5 recebeu (depois do mapeamento), canal original
-//   bateria.wav   saída do SSD5, 24 bits estéreo, alinhada amostra a amostra com o .mid
+//   bateria.mid   notas que o plugin recebeu (depois do mapeamento), canal original
+//   bateria.wav   saída do plugin, 24 bits estéreo, alinhada amostra a amostra com o .mid
 //   sessao.json   metadados (taxa, duração, perfil, kit, perdas)
 class Recorder
 {

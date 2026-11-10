@@ -1,5 +1,6 @@
 #include <juce_core/juce_core.h>
 
+#include "engine/PluginHost.h"
 #include "mapping/DrumCatalog.h"
 #include "mapping/MappingProfile.h"
 #include "mapping/ProfileManager.h"
@@ -253,6 +254,53 @@ public:
         dir.deleteRecursively();
     }
 };
+
+class PluginFilesTest final : public juce::UnitTest
+{
+public:
+    PluginFilesTest() : juce::UnitTest ("PluginFiles", "Backbeat") {}
+
+    void runTest() override
+    {
+        beginTest ("acha .vst3 (arquivo ou pasta) sem entrar nos bundles");
+        {
+            const auto root = juce::File::createTempFile ("vst3scan");
+            root.createDirectory();
+            root.getChildFile ("SSDSampler5.vst3/Contents/x86_64-win").createDirectory();
+            root.getChildFile ("SSDSampler5.vst3/Contents/x86_64-win/SSDSampler5.vst3").create(); // dentro do bundle
+            root.getChildFile ("Fabricante/Drums.vst3").create();
+            root.getChildFile ("Fabricante/leiame.txt").create();
+            root.getChildFile ("Outro.VST3").createDirectory();
+
+            auto found = PluginHost::findVst3In (root);
+            juce::StringArray names;
+            for (const auto& f : found)
+                names.add (f.getFileName());
+            names.sort (true);
+            expectEquals (names.joinIntoString (","), juce::String ("Drums.vst3,Outro.VST3,SSDSampler5.vst3"));
+
+            expect (PluginHost::findVst3In (root.getChildFile ("nao-existe")).isEmpty());
+            root.deleteRecursively();
+        }
+
+        beginTest ("reconhece o SSD5");
+        expect (PluginHost::isSsd5 (juce::File ("C:\\x\\SSDSampler5.vst3")));
+        expect (! PluginHost::isSsd5 (juce::File ("C:\\x\\MT-PowerDrumKit.vst3")));
+
+        beginTest ("tabela General MIDI para os outros plugins");
+        {
+            const auto gm = DrumCatalog::builtInGm();
+            expect (! gm.isSsd5);
+            expect (DrumCatalog::builtInSsd5().isSsd5);
+            expect (gm.find (36) != nullptr && gm.find (36)->group == "Bumbo");
+            expect (gm.find (46) != nullptr && gm.find (46)->group == "Chimbal");
+            expect (gm.find (50) != nullptr && gm.find (50)->group == "Tons");
+            expectEquals (gm.groupsInOrder()[0], juce::String ("Bumbo"));
+        }
+    }
+};
+
+static PluginFilesTest pluginFilesTest;
 
 static MappingTest mappingTest;
 static CatalogTest catalogTest;

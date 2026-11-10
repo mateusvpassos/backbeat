@@ -93,6 +93,11 @@ private:
     void togglePluginWindow();
     void closePluginWindow();
     void choosePluginFile();
+    void showPluginMenu();                        // VST3 instalados + "Outro arquivo..."
+    juce::String storedStateFor (const juce::File& file) const;
+    void storeStateFor (const juce::File& file, const juce::String& base64);
+    void updatePluginLabels();                    // textos com o nome do plugin carregado
+    void updateCatalogForPlugin();                // SSD5 = peças do .ssd5kit; outros = General MIDI
     void refreshMidiDevices();
     void refreshOutputPairs();
     void updateDeviceStatus();
@@ -112,6 +117,7 @@ private:
     PluginHost pluginHost;
     std::unique_ptr<PluginWindow> pluginWindow;
     juce::File pluginFile;
+    juce::String pluginName { "SSD5" };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     DrumCatalog catalog = DrumCatalog::builtInSsd5();
@@ -125,7 +131,7 @@ private:
     // ---- interface ----
     juce::Label titleLabel, subtitleLabel;
     juce::TextButton audioButton { L"Áudio..." }, openPluginButton { "Abrir SSD5" },
-                     choosePluginButton { "Trocar plugin..." }, saveStateButton { "Salvar estado" },
+                     choosePluginButton { "Trocar plugin" }, saveStateButton { "Salvar estado" },
                      panicButton { L"Pânico" }, refreshMidiButton { "Atualizar" };
 
     juce::Label deviceHeader, deviceLabel, latencyLabel, perfLabel;

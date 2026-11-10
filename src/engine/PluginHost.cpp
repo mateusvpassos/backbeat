@@ -8,12 +8,6 @@ PluginHost::PluginHost()
     juce::addDefaultFormatsToManager (formatManager);
 }
 
-juce::File PluginHost::defaultDrumPluginFile()
-{
-    return juce::File::getSpecialLocation (juce::File::globalApplicationsDirectory) // C:\Program Files
-        .getChildFile ("Common Files").getChildFile ("VST3").getChildFile ("SSDSampler5.vst3");
-}
-
 PluginHost::LoadResult PluginHost::loadVst3 (const juce::File& file, double sampleRate, int blockSize)
 {
     LoadResult result;

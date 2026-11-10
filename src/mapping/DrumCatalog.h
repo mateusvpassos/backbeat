@@ -27,6 +27,10 @@ public:
 
     static juce::File defaultSsd5KitFile();
 
+    // Peças do General MIDI (canal 10), para plugins que não são o SSD5.
+    static DrumCatalog builtInGm();
+    bool isSsd5 = true; // false = tabela GM (esconde o botão "Kit do SSD5...")
+
     const juce::Array<DrumPiece>& getPieces() const noexcept { return pieces; }
     const DrumPiece* find (int note) const noexcept;
     juce::String nameFor (int note) const; // "Hi-Hat Tip Closed eD", ou "nota 99" se não existir

@@ -154,7 +154,7 @@ PadsPage::PadsPage (MappingContext& c) : ctx (c)
     curveView = std::make_unique<CurveView> (*this);
 
     theme::caption (profileLabel, "Perfil");
-    theme::caption (hintLabel, L"Bata num pad: ele aparece aqui e acende quando chega. Escolha ao lado qual peça do SSD5 ele toca.");
+    theme::caption (hintLabel, L"Bata num pad: ele aparece aqui e acende quando chega. Escolha ao lado qual peça do plugin ele toca.");
     theme::caption (catalogLabel, {});
     theme::caption (unmappedLabel, "Notas fora da lista");
     theme::body (lastHitLabel);
@@ -306,6 +306,7 @@ void PadsPage::refresh()
     catalogLabel.setText (juce::String::fromUTF8 ("Peças: ") + ctx.catalog.sourceDescription
                               + " (" + juce::String (ctx.catalog.getPieces().size()) + ")",
                           juce::dontSendNotification);
+    kitButton.setVisible (ctx.catalog.isSsd5);
 
     list.updateContent();
     list.repaint();
@@ -339,7 +340,10 @@ juce::Component* PadsPage::refreshComponentForRow (int row, bool, juce::Componen
 
 int PadsPage::guessOutputFor (int input) const
 {
-    // Primeiro o que o perfil padrão (GM → SSD5) faria; senão a mesma nota, se o SSD5 tiver essa peça.
+    // SSD5: primeiro o que o perfil padrão (GM → SSD5) faria; senão a mesma nota, se ele tiver essa peça.
+    // Os outros plugins já falam General MIDI: a mesma nota.
+    if (! ctx.catalog.isSsd5)
+        return input;
     const auto defaults = MappingProfile::defaultNexusGm();
     if (const int i = defaults.indexOfInput (input); i >= 0)
     {
@@ -394,9 +398,9 @@ void PadsPage::handleMidi (const MidiEvent& e)
             calMax = juce::jmax (calMax, hihatLive);
         }
 
-        hihatLiveLabel.setText ("pedal: " + juce::String (hihatLive) + juce::String::fromUTF8 (" → SSD5: ")
+        hihatLiveLabel.setText ("pedal: " + juce::String (hihatLive) + juce::String::fromUTF8 (" → plugin (CC4): ")
                                     + juce::String (e.mapped >= 0 ? e.mapped : 0)
-                                    + juce::String::fromUTF8 ("  (0 = fechado ... 127 = aberto no SSD5)"),
+                                    + juce::String::fromUTF8 ("  (0 = fechado ... 127 = aberto)"),
                                 juce::dontSendNotification);
     }
 }

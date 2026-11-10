@@ -15,6 +15,14 @@ public:
 
     static juce::File defaultDrumPluginFile(); // C:\Program Files\Common Files\VST3\SSDSampler5.vst3
 
+    // Plugins .vst3 nas pastas padrão do Windows (Common Files\VST3 e a pasta do usuário), por nome.
+    // Só lista os arquivos/pastas: não abre nenhum plugin (rápido e sem risco de travar).
+    static juce::Array<juce::File> findInstalledVst3();
+    static juce::Array<juce::File> findVst3In (const juce::File& folder);
+
+    // O SSD5 tem nomes de peças próprios (.ssd5kit); os outros usam a tabela General MIDI.
+    static bool isSsd5 (const juce::File& pluginFile);
+
     struct LoadResult
     {
         std::unique_ptr<juce::AudioPluginInstance> instance;

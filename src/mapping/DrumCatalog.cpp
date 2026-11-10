@@ -1,5 +1,7 @@
 #include "mapping/DrumCatalog.h"
 
+#include "util/DrumNames.h"
+
 #include <map>
 #include <string>
 
@@ -67,6 +69,36 @@ void DrumCatalog::sortByGroup()
         const auto ga = groupOrder.indexOf (a.group), gb = groupOrder.indexOf (b.group);
         return ga < gb;
     });
+}
+
+DrumCatalog DrumCatalog::builtInGm()
+{
+    DrumCatalog c;
+    c.isSsd5 = false;
+    c.sourceDescription = "tabela General MIDI";
+
+    const auto groupFor = [] (int n) -> juce::String
+    {
+        switch (n)
+        {
+            case 35: case 36:                               return "Bumbo";
+            case 37: case 38: case 40:                      return "Caixa";
+            case 41: case 43: case 45: case 47: case 48: case 50: return "Tons";
+            case 42: case 44: case 46:                      return "Chimbal";
+            case 51: case 53: case 59:                      return L"Condução";
+            case 49: case 57:                               return "Ataque";
+            case 55:                                        return "Splash";
+            case 52:                                        return "China";
+            default:                                        return "Outros";
+        }
+    };
+
+    for (int n = 35; n <= 81; ++n)
+        if (const auto name = gmDrumName (n); name.isNotEmpty())
+            c.add (n, name, groupFor (n));
+
+    c.sortByGroup();
+    return c;
 }
 
 DrumCatalog DrumCatalog::builtInSsd5()

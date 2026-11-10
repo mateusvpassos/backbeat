@@ -96,7 +96,7 @@ MainComponent::MainComponent()
     styleBody (transportInfoLabel);
     styleCaption (folderLabel, {});
     recordButton.setTooltip (L"Grava o MIDI e o áudio da bateria (F9). Dica: o modo Ritmo estável deixa o tempo das notas exato.");
-    playButton.setTooltip (L"Toca o último take pelo SSD5, com o kit atual (F10)");
+    playButton.setTooltip (L"Toca o último take pelo plugin de bateria, com o kit atual (F10)");
     stopButton.setTooltip (L"Para a gravação ou a reprodução (F8)");
     chooseFolderButton.setTooltip (L"Onde as gravações são salvas");
 
@@ -109,7 +109,8 @@ MainComponent::MainComponent()
     chromeTipLabel.setJustificationType (juce::Justification::topLeft);
     chromeTipLabel.setMinimumHorizontalScale (1.0f);
     chromeProcessEditor.setTooltip (L"Nome do executável (ex.: chrome.exe, msedge.exe, spotify.exe)");
-    mappingButton.setTooltip (L"Escolher qual peça do SSD5 cada pad e cada tecla toca");
+    mappingButton.setTooltip (L"Escolher qual peça do plugin cada pad e cada tecla toca");
+    choosePluginButton.setTooltip (L"Escolher outro instrumento VST3 (os instalados aparecem na lista)");
     lastNoteLabel.setFont (theme::font (26.0f, theme::Weight::semibold));
     lastNoteLabel.setText ("bata num pad", juce::dontSendNotification);
     lastNoteLabel.setColour (juce::Label::textColourId, textDim);
@@ -167,7 +168,7 @@ MainComponent::MainComponent()
     aboutButton.onClick        = [this] { showAbout(); };
     audioButton.onClick        = [this] { showAudioSettings(); };
     openPluginButton.onClick   = [this] { togglePluginWindow(); };
-    choosePluginButton.onClick = [this] { choosePluginFile(); };
+    choosePluginButton.onClick = [this] { showPluginMenu(); };
     saveStateButton.onClick    = [this] { savePluginState(); setStatus ("Estado do plugin salvo."); };
     panicButton.onClick        = [this] { engine.panic(); setStatus ("Todas as notas paradas."); };
     refreshMidiButton.onClick  = [this] { refreshMidiDevices(); };
@@ -585,7 +586,7 @@ void MainComponent::drainMidiMonitor()
         if (m.isNoteOn())
         {
             lastNoteLabel.setText (describeDrumNote (m.getNoteNumber()), juce::dontSendNotification);
-            lastNoteDetail.setText ((e.mapped >= 0 ? L"→ SSD5: " + catalog.nameFor (e.mapped) + " (" + juce::String (e.mapped) + ")"
+            lastNoteDetail.setText ((e.mapped >= 0 ? L"→ " + pluginName + ": " + catalog.nameFor (e.mapped) + " (" + juce::String (e.mapped) + ")"
                                                    : juce::String (L"→ ignorado pelo perfil"))
                                         + L"  ·  força " + juce::String (m.getVelocity())
                                         + L" · canal " + juce::String (m.getChannel()),
@@ -637,18 +638,19 @@ void MainComponent::loadDrumPlugin (const juce::File& file)
         return;
     }
 
-    // Restaura kit e mixer interno se o estado salvo for deste mesmo plugin.
-    bool restored = false;
-    if (settings.get ("plugin", "estadoDe").toString() == file.getFullPathName())
-        restored = PluginHost::setStateBase64 (*result.instance, settings.get ("plugin", "estado").toString());
+    // Restaura kit e mixer interno: cada plugin guarda o seu estado (trocar e voltar não perde o kit).
+    const bool restored = PluginHost::setStateBase64 (*result.instance, storedStateFor (file));
 
     const auto name = result.instance->getName();
     engine.setPlugin (std::move (result.instance)); // o anterior (se houver) é destruído aqui, fora do áudio
 
     pluginFile = file;
+    pluginName = name;
     settings.set ("plugin", "caminho", file.getFullPathName());
     settings.save();
 
+    updatePluginLabels();
+    updateCatalogForPlugin();
     openPluginButton.setButtonText ("Abrir " + name);
     openPluginButton.setEnabled (true);
     saveStateButton.setEnabled (true);
@@ -660,10 +662,109 @@ void MainComponent::savePluginState()
 {
     if (auto* p = engine.getPlugin())
     {
-        settings.set ("plugin", "estado", PluginHost::getStateBase64 (*p));
-        settings.set ("plugin", "estadoDe", pluginFile.getFullPathName());
+        storeStateFor (pluginFile, PluginHost::getStateBase64 (*p));
         settings.save();
     }
+}
+
+juce::String MainComponent::storedStateFor (const juce::File& file) const
+{
+    const auto path = file.getFullPathName();
+    if (const auto* list = settings.get ("plugin", "estados").getArray())
+        for (const auto& entry : *list)
+            if (entry["caminho"].toString().equalsIgnoreCase (path))
+                return entry["estado"].toString();
+
+    // Formato antigo (um estado só, de um plugin).
+    if (settings.get ("plugin", "estadoDe").toString().equalsIgnoreCase (path))
+        return settings.get ("plugin", "estado").toString();
+    return {};
+}
+
+void MainComponent::storeStateFor (const juce::File& file, const juce::String& base64)
+{
+    const auto path = file.getFullPathName();
+    juce::Array<juce::var> list;
+    if (const auto* old = settings.get ("plugin", "estados").getArray())
+        for (const auto& entry : *old)
+            if (! entry["caminho"].toString().equalsIgnoreCase (path))
+                list.add (entry);
+
+    // Migra o estado do formato antigo (um plugin só) para a lista.
+    const auto oldPath = settings.get ("plugin", "estadoDe").toString();
+    if (oldPath.isNotEmpty())
+    {
+        if (! oldPath.equalsIgnoreCase (path))
+        {
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("caminho", oldPath);
+            o->setProperty ("estado", settings.get ("plugin", "estado"));
+            list.add (juce::var (o));
+        }
+        settings.set ("plugin", "estadoDe", juce::var());
+        settings.set ("plugin", "estado", juce::var());
+    }
+
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("caminho", path);
+    o->setProperty ("estado", base64);
+    list.add (juce::var (o));
+    settings.set ("plugin", "estados", juce::var (list));
+}
+
+void MainComponent::updatePluginLabels()
+{
+    subtitleLabel.setText (L"bateria eletrônica + " + pluginName + L", via ASIO", juce::dontSendNotification);
+    strips[trackDrums]->setCaption (pluginName);
+}
+
+void MainComponent::updateCatalogForPlugin()
+{
+    if (PluginHost::isSsd5 (pluginFile))
+    {
+        if (! catalog.isSsd5)
+            loadCatalog (juce::File (settings.get ("ssd5", "kit", DrumCatalog::defaultSsd5KitFile().getFullPathName()).toString()));
+        return;
+    }
+
+    catalog = DrumCatalog::builtInGm();
+    if (mappingWindow != nullptr)
+        mappingWindow->refresh();
+}
+
+void MainComponent::showPluginMenu()
+{
+    const auto installed = PluginHost::findInstalledVst3();
+    constexpr int otherFileId = 100000;
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Plugins VST3 instalados");
+    for (int i = 0; i < installed.size(); ++i)
+        menu.addItem (i + 1, installed[i].getFileNameWithoutExtension(), true, installed[i] == pluginFile);
+    if (installed.isEmpty())
+        menu.addItem (-1, L"Nenhum .vst3 em Common Files\\VST3", false, false);
+    menu.addSeparator();
+    menu.addItem (otherFileId, "Outro arquivo...");
+
+    juce::Component::SafePointer<MainComponent> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&choosePluginButton),
+                        [safe, installed] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+        if (result == otherFileId)
+        {
+            safe->choosePluginFile();
+            return;
+        }
+        if (! juce::isPositiveAndNotGreaterThan (result, installed.size()) || installed[result - 1] == safe->pluginFile)
+            return;
+
+        const auto file = installed[result - 1];
+        safe->setStatus ("Carregando " + file.getFileNameWithoutExtension() + "...");
+        // Dá tempo de o texto aparecer antes de abrir o plugin (pode levar alguns segundos).
+        juce::Timer::callAfterDelay (50, [safe, file] { if (safe != nullptr) safe->loadDrumPlugin (file); });
+    });
 }
 
 void MainComponent::togglePluginWindow()
@@ -1035,7 +1136,7 @@ void MainComponent::setupMixer()
         }
     }
 
-    strips[trackDrums]->setCaption ("SSD5");
+    strips[trackDrums]->setCaption (pluginName);
     strips[trackChrome]->setCaption ("Songsterr");
 
     masterStrip = std::make_unique<ChannelStrip> (ChannelStrip::Config { "Master", theme::accent, true, false, false });
@@ -1314,7 +1415,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
             heldKeys[code] = b.note;
             engine.playNote (b.note, b.velocity, true);
             lastNoteLabel.setText (L"Tecla " + b.key, juce::dontSendNotification);
-            lastNoteDetail.setText (L"→ SSD5: " + catalog.nameFor (b.note) + " (" + juce::String (b.note) + L")  ·  força "
+            lastNoteDetail.setText (L"→ " + pluginName + ": " + catalog.nameFor (b.note) + " (" + juce::String (b.note) + L")  ·  força "
                                         + juce::String (b.velocity),
                                     juce::dontSendNotification);
             noteFlash = 1.0f;
