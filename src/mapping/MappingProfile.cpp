@@ -17,6 +17,7 @@ juce::String commandId (Command c)
         case Command::play:   return "tocar";
         case Command::stop:   return "parar";
         case Command::panic:  return "panico";
+        case Command::metronome: return "metronomo";
         case Command::none:   break;
     }
     return {};
@@ -30,6 +31,7 @@ juce::String commandLabel (Command c)
         case Command::play:   return "Tocar";
         case Command::stop:   return "Parar";
         case Command::panic:  return L"Pânico (cortar som)";
+        case Command::metronome: return L"Metrônomo (liga/desliga)";
         case Command::none:   break;
     }
     return {};
@@ -45,7 +47,8 @@ Command commandFromId (const juce::String& id)
 
 const juce::Array<Command>& allCommands()
 {
-    static const juce::Array<Command> list { Command::record, Command::play, Command::stop, Command::panic };
+    static const juce::Array<Command> list { Command::record, Command::play, Command::stop, Command::panic,
+                                                  Command::metronome };
     return list;
 }
 
@@ -267,6 +270,7 @@ MappingProfile MappingProfile::defaultNexusGm()
     p.keys.add ({ "F9", -1, Command::record, 100 });
     p.keys.add ({ "F10", -1, Command::play, 100 });
     p.keys.add ({ "F8", -1, Command::stop, 100 });
+    p.keys.add ({ "F7", -1, Command::metronome, 100 });
     return p;
 }
 

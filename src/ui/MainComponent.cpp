@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 
+#include "ui/AboutWindow.h"
 #include "util/DrumNames.h"
 
 #include "BackbeatAssets.h"
@@ -37,6 +38,35 @@ namespace
 
     void styleCaption (juce::Label& l, const juce::String& text) { theme::caption (l, text); }
 }
+
+// Exporta a mixagem numa thread própria (pode levar alguns segundos num take longo).
+class MainComponent::ExportJob final : public juce::Thread
+{
+public:
+    ExportJob (juce::File takeFolder, const mixexport::Gains& g)
+        : juce::Thread ("Backbeat: exportar mixagem"), folder (std::move (takeFolder)), gains (g)
+    {
+        startThread();
+    }
+
+    ~ExportJob() override { stopThread (10000); } // fechar no meio: cancela e apaga o temporário
+
+    void run() override
+    {
+        result = mixexport::exportTake (folder, gains, [this] (float p)
+        {
+            progress.store (p);
+            return ! threadShouldExit();
+        });
+        done.store (true);
+    }
+
+    const juce::File folder;
+    const mixexport::Gains gains;
+    mixexport::Result result;          // lido só depois de done
+    std::atomic<float> progress { 0.0f };
+    std::atomic<bool> done { false };
+};
 
 MainComponent::MainComponent()
 {
@@ -97,6 +127,15 @@ MainComponent::MainComponent()
 
     styleCaption (statusLabel, {});
 
+    styleHeader (metronomeHeader, L"Metrônomo");
+    styleCaption (bpmLabel, "BPM");
+    styleCaption (signatureLabel, "Compasso");
+    styleCaption (countInLabel, "Contagem");
+    styleCaption (metronomeVolumeLabel, "Volume");
+    exportButton.setTooltip (L"Junta as faixas do último take em mixagem.wav, com os volumes, mudo e solo atuais do mixer");
+    exportOtherButton.setTooltip (L"Exportar a mixagem de outro take...");
+    aboutButton.getProperties().set ("variant", "ghost");
+
     timingCombo.addItem (L"Menor latência", 1 + (int) AudioEngine::MidiTiming::lowestLatency);
     timingCombo.addItem (L"Ritmo estável (+1 buffer)", 1 + (int) AudioEngine::MidiTiming::steady);
 
@@ -111,14 +150,21 @@ MainComponent::MainComponent()
              &chromeHeader, &chromeToggle, &chromeProcessLabel, &chromeProcessEditor, &chromeStatusLabel,
              &chromeTipLabel, &lastNoteLabel, &lastNoteDetail, &lastOtherLabel,
              &mixerHeader, &outputPairLabel, &outputCombo, &compensationLabel, &compensationSlider,
-             &compensationInfo, &mixerHint, &statusLabel })
+             &compensationInfo, &mixerHint, &statusLabel,
+             &metronomeHeader, &beatIndicator, &metronomeToggle, &bpmLabel, &bpmSlider, &tapButton,
+             &signatureLabel, &signatureCombo, &countInLabel, &countInCombo, &metronomeVolumeLabel,
+             &metronomeVolumeSlider, &exportButton, &exportOtherButton, &aboutButton })
         addAndMakeVisible (c);
 
     openPluginButton.getProperties().set ("variant", "primary");
     recordButton.getProperties().set ("onColour", (juce::int64) theme::danger.getARGB());
     playButton.getProperties().set ("onColour", (juce::int64) theme::ok.getARGB());
     setupMixer();
+    setupMetronome();
 
+    exportButton.onClick       = [this] { if (const auto* take = recorder.getLastTake()) exportMix (take->folder); };
+    exportOtherButton.onClick  = [this] { chooseTakeToExport(); };
+    aboutButton.onClick        = [this] { showAbout(); };
     audioButton.onClick        = [this] { showAudioSettings(); };
     openPluginButton.onClick   = [this] { togglePluginWindow(); };
     choosePluginButton.onClick = [this] { choosePluginFile(); };
@@ -172,7 +218,7 @@ MainComponent::MainComponent()
         }
     };
 
-    setSize (1180, 770);
+    setSize (1440, 770);
 
     // ---------- núcleo ----------
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
@@ -191,6 +237,7 @@ MainComponent::MainComponent()
 
     engine.setOutputPair ((int) settings.get ("saida", "par", 0));
     loadMixerSettings();
+    loadMetronomeSettings();
 
     openAudioDevice();
     step ("dispositivo de audio aberto");
@@ -268,6 +315,7 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     stopTimer();
+    exportJob.reset(); // cancela uma exportação em andamento
     deviceManager.removeChangeListener (this);
 
     releaseHeldKeys();
@@ -696,6 +744,8 @@ void MainComponent::timerCallback()
     recorder.poll();
     if (recorder.getState() != Recorder::State::idle || timerTicks % 10 == 0)
         updateTransportUi();
+    updateMetronomeUi();
+    pollExport();
 
     if (++timerTicks % 15 == 0) // 2x por segundo
         updateDeviceStatus();
@@ -726,10 +776,19 @@ void MainComponent::paint (juce::Graphics& g)
         theme::drawPanel (g, r);
     };
 
+    // O último painel de cada coluna desce até o fim da área de cima: as três colunas terminam alinhadas.
+    const auto drawLastPanel = [&] (juce::Component& first, juce::Rectangle<int> column)
+    {
+        auto r = juce::Rectangle<int>::leftTopRightBottom (column.getX(), first.getY(), column.getRight(), topArea.getBottom())
+                     .expanded (14, 12).toFloat();
+        theme::drawPanel (g, r);
+    };
+
     drawPanel (deviceHeader, perfLabel, leftColumn);
-    drawPanel (midiHeader, lastOtherLabel, leftColumn);
-    drawPanel (transportHeader, folderLabel, rightColumn);
-    drawPanel (chromeHeader, chromeTipLabel, rightColumn);
+    drawLastPanel (midiHeader, leftColumn);
+    drawPanel (transportHeader, folderLabel, middleColumn);
+    drawLastPanel (metronomeHeader, middleColumn);
+    drawLastPanel (chromeHeader, rightColumn);
     theme::drawPanel (g, mixerArea.expanded (14, 0).toFloat()); // mesmas bordas dos painéis de cima
 
     // linha da barra de título
@@ -749,9 +808,9 @@ void MainComponent::resized()
         titleLabel.setBounds (top.removeFromLeft (90));
         subtitleLabel.setBounds (top.removeFromLeft (260));
 
-        for (auto* b : { &panicButton, &saveStateButton, &choosePluginButton, &openPluginButton, &audioButton })
+        for (auto* b : { &aboutButton, &panicButton, &saveStateButton, &choosePluginButton, &openPluginButton, &audioButton })
         {
-            b->setBounds (top.removeFromRight (b == &openPluginButton ? 160 : 118));
+            b->setBounds (top.removeFromRight (b == &openPluginButton ? 160 : b == &aboutButton ? 80 : 118));
             top.removeFromRight (8);
         }
     }
@@ -768,7 +827,7 @@ void MainComponent::resized()
         mixerHint.setBounds (head);
         m.removeFromTop (10);
 
-        constexpr int stripW = 150, gap = 10;
+        constexpr int stripW = 170, gap = 10;
         for (int t = 0; t < numTracks; ++t)
         {
             strips[t]->setBounds (m.removeFromLeft (stripW));
@@ -778,7 +837,7 @@ void MainComponent::resized()
         m.removeFromLeft (gap + 14);
 
         // saída + compensação das entradas
-        auto side = m;
+        auto side = m.removeFromLeft (juce::jmin (m.getWidth(), 380));
         outputPairLabel.setBounds (side.removeFromTop (20));
         outputCombo.setBounds (side.removeFromTop (28));
         side.removeFromTop (18);
@@ -788,9 +847,13 @@ void MainComponent::resized()
         compensationInfo.setBounds (side.removeFromTop (54));
     }
     area.removeFromBottom (24);
+    topArea = area;
 
     const int gap = 40;
-    leftColumn = area.removeFromLeft ((area.getWidth() - gap) / 2);
+    const int colW = (area.getWidth() - 2 * gap) / 3;
+    leftColumn = area.removeFromLeft (colW);
+    area.removeFromLeft (gap);
+    middleColumn = area.removeFromLeft (colW);
     area.removeFromLeft (gap);
     rightColumn = area;
 
@@ -832,8 +895,8 @@ void MainComponent::resized()
     lastNoteDetail.setBounds (col.removeFromTop (20));
     lastOtherLabel.setBounds (col.removeFromTop (18));
 
-    // ================= coluna direita =================
-    col = rightColumn;
+    // ================= coluna do meio: gravação + metrônomo =================
+    col = middleColumn;
 
     transportHeader.setBounds (col.removeFromTop (18));
     col.removeFromTop (6);
@@ -841,10 +904,10 @@ void MainComponent::resized()
         auto row = col.removeFromTop (34);
         for (auto* b : { &recordButton, &playButton, &stopButton })
         {
-            b->setBounds (row.removeFromLeft (100));
-            row.removeFromLeft (8);
+            b->setBounds (row.removeFromLeft (94));
+            row.removeFromLeft (6);
         }
-        row.removeFromLeft (8);
+        row.removeFromLeft (6);
         timeLabel.setBounds (row);
     }
     col.removeFromTop (6);
@@ -852,27 +915,67 @@ void MainComponent::resized()
     col.removeFromTop (6);
     {
         auto row = col.removeFromTop (28);
-        openTakeButton.setBounds (row.removeFromRight (160));
-        row.removeFromRight (8);
+        exportButton.setBounds (row.removeFromLeft (150));
+        row.removeFromLeft (4);
+        exportOtherButton.setBounds (row.removeFromLeft (34));
+        openTakeButton.setBounds (row.removeFromRight (150));
+    }
+    col.removeFromTop (6);
+    {
+        auto row = col.removeFromTop (28);
         chooseFolderButton.setBounds (row.removeFromRight (80));
         row.removeFromRight (8);
         folderLabel.setBounds (row);
     }
     col.removeFromTop (34);
 
-    chromeHeader.setBounds (col.removeFromTop (18));
+    {
+        auto head = col.removeFromTop (18);
+        metronomeHeader.setBounds (head.removeFromLeft (140));
+        beatIndicator.setBounds (head.removeFromRight (180));
+    }
     col.removeFromTop (6);
     {
-        auto row = col.removeFromTop (26);
-        chromeToggle.setBounds (row.removeFromLeft (250));
+        auto row = col.removeFromTop (28);
+        metronomeToggle.setBounds (row.removeFromLeft (92));
         row.removeFromLeft (8);
-        chromeProcessLabel.setBounds (row.removeFromLeft (70));
-        chromeProcessEditor.setBounds (row.removeFromLeft (140));
+        bpmLabel.setBounds (row.removeFromLeft (36));
+        tapButton.setBounds (row.removeFromRight (56));
+        row.removeFromRight (8);
+        bpmSlider.setBounds (row);
     }
-    col.removeFromTop (4);
+    col.removeFromTop (6);
+    {
+        auto row = col.removeFromTop (28);
+        signatureLabel.setBounds (row.removeFromLeft (72));
+        signatureCombo.setBounds (row.removeFromLeft (76));
+        row.removeFromLeft (16);
+        countInLabel.setBounds (row.removeFromLeft (70));
+        countInCombo.setBounds (row);
+    }
+    col.removeFromTop (6);
+    {
+        auto row = col.removeFromTop (28);
+        metronomeVolumeLabel.setBounds (row.removeFromLeft (72));
+        metronomeVolumeSlider.setBounds (row);
+    }
+
+    // ================= coluna direita: Chrome =================
+    col = rightColumn;
+
+    chromeHeader.setBounds (col.removeFromTop (18));
+    col.removeFromTop (6);
+    chromeToggle.setBounds (col.removeFromTop (26).removeFromLeft (260));
+    col.removeFromTop (6);
+    {
+        auto row = col.removeFromTop (28);
+        chromeProcessLabel.setBounds (row.removeFromLeft (70));
+        chromeProcessEditor.setBounds (row.removeFromLeft (160));
+    }
+    col.removeFromTop (6);
     chromeStatusLabel.setBounds (col.removeFromTop (22));
-    col.removeFromTop (4);
-    chromeTipLabel.setBounds (col.removeFromTop (50));
+    col.removeFromTop (8);
+    chromeTipLabel.setBounds (col.removeFromTop (100));
 }
 
 // ---------------------------------------------------------------------------
@@ -1157,6 +1260,9 @@ void MainComponent::runCommand (Command c)
         case Command::record: toggleRecord();  break;
         case Command::play:   togglePlay();    break;
         case Command::stop:   stopTransport(); break;
+        case Command::metronome:
+            metronomeToggle.setToggleState (! metronomeToggle.getToggleState(), juce::sendNotification);
+            break;
 
         case Command::none:
             break;
@@ -1276,6 +1382,9 @@ void MainComponent::toggleRecord()
     meta.recordChrome = chromeCapture.isEnabled();
     meta.chromeProcess = chromeCapture.getExeName();
     meta.inputCompensationSamples = inputCompensationSamples();
+    meta.bpm = engine.getTempo();
+    meta.beatsPerBar = engine.getBeatsPerBar();
+    meta.countInBars = juce::jmax (0, countInCombo.getSelectedId() - 1);
     for (int k = 0; k < numInputTracks; ++k)
     {
         auto& strip = *strips[trackInput1 + k];
@@ -1342,10 +1451,32 @@ void MainComponent::updateTransportUi()
     playButton.setEnabled ((state == Recorder::State::idle && take != nullptr) || state == Recorder::State::playing);
     stopButton.setEnabled (state == Recorder::State::recording || state == Recorder::State::playing);
 
+    // O andamento e o compasso vão para o .mid: ficam travados enquanto grava.
+    const bool lockTempo = state == Recorder::State::recording || state == Recorder::State::finishing;
+    for (auto* c : std::initializer_list<juce::Component*> { &bpmSlider, &tapButton, &signatureCombo, &countInCombo })
+        c->setEnabled (! lockTempo);
+    exportButton.setEnabled (take != nullptr && exportJob == nullptr && state == Recorder::State::idle);
+    exportOtherButton.setEnabled (exportJob == nullptr && state == Recorder::State::idle);
+
     switch (state)
     {
         case Recorder::State::recording:
         {
+            if (recorder.isCountingIn())
+            {
+                const int bpb = engine.getBeatsPerBar();
+                const int total = juce::jmax (1, countInCombo.getSelectedId() - 1) * bpb;
+                const auto index = engine.getMetronomeBeat() + total; // 0 = primeiro tempo da contagem
+                timeLabel.setText (formatTime (0.0), juce::dontSendNotification);
+                timeLabel.setColour (juce::Label::textColourId, theme::warn);
+                transportInfoLabel.setText (index >= 0 && index < total
+                                                ? L"Contagem: " + juce::String ((int) index % bpb + 1) + L" · compasso "
+                                                      + juce::String ((int) index / bpb + 1) + " de " + juce::String (total / bpb)
+                                                : juce::String (L"Contagem..."),
+                                            juce::dontSendNotification);
+                break;
+            }
+
             timeLabel.setText (formatTime (recorder.getPositionSeconds()), juce::dontSendNotification);
             timeLabel.setColour (juce::Label::textColourId, red.brighter (0.4f));
             const int disk = juce::roundToInt (recorder.getDiskFillLevel() * 100.0f);
@@ -1402,6 +1533,205 @@ void MainComponent::chooseRecordingsFolder()
         safe->recorder.loadLatestTake (dir);
         safe->updateTransportUi();
     });
+}
+
+// ---------------------------------------------------------------------------
+// Metrônomo, contagem e exportação (F6)
+// ---------------------------------------------------------------------------
+
+void MainComponent::setupMetronome()
+{
+    metronomeToggle.setTooltip (L"Liga o clique do metrônomo (F7). A contagem antes de gravar toca mesmo com ele desligado.");
+
+    bpmSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    bpmSlider.setRange (30.0, 300.0, 1.0);
+    bpmSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 22);
+    bpmSlider.setDoubleClickReturnValue (true, 120.0);
+    bpmSlider.setTooltip (L"Andamento do metrônomo. Vai para o bateria.mid (a grade do FL Studio bate com o take).");
+    bpmSlider.onValueChange = [this] { engine.setTempo (bpmSlider.getValue()); };
+    bpmSlider.onDragEnd = [this] { saveMetronomeSettings(); };
+
+    tapButton.setTooltip (L"Clique no ritmo da música (4 vezes ou mais) para achar o BPM");
+    tapButton.onClick = [this] { tapTempo(); };
+
+    for (int n = 2; n <= 7; ++n)
+        signatureCombo.addItem (juce::String (n) + "/4", n);
+    signatureCombo.onChange = [this]
+    {
+        engine.setBeatsPerBar (signatureCombo.getSelectedId());
+        saveMetronomeSettings();
+    };
+
+    countInCombo.addItem ("Sem contagem", 1);
+    countInCombo.addItem ("1 compasso", 2);
+    countInCombo.addItem ("2 compassos", 3);
+    countInCombo.setTooltip (L"Compassos de clique antes de a gravação começar (F9). O take começa no tempo 1.");
+    countInCombo.onChange = [this] { saveMetronomeSettings(); };
+
+    metronomeVolumeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    metronomeVolumeSlider.setRange (-40.0, 0.0, 0.5);
+    metronomeVolumeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 70, 22);
+    metronomeVolumeSlider.setTextValueSuffix (" dB");
+    metronomeVolumeSlider.setDoubleClickReturnValue (true, -6.0);
+    metronomeVolumeSlider.setTooltip (L"Volume do clique (passa pelo Master; nunca vai para a gravação)");
+    metronomeVolumeSlider.onValueChange = [this] { engine.setMetronomeGain (dbToGain (metronomeVolumeSlider.getValue())); };
+    metronomeVolumeSlider.onDragEnd = [this] { saveMetronomeSettings(); };
+
+    metronomeToggle.onClick = [this]
+    {
+        engine.setMetronomeOn (metronomeToggle.getToggleState());
+        saveMetronomeSettings();
+    };
+}
+
+void MainComponent::loadMetronomeSettings()
+{
+    const bool on = (bool) settings.get ("metronomo", "ligado", false);
+    const double bpm = juce::jlimit (30.0, 300.0, (double) settings.get ("metronomo", "bpm", 120.0));
+    const int bpb = juce::jlimit (2, 7, (int) settings.get ("metronomo", "compasso", 4));
+    const int countIn = juce::jlimit (0, 2, (int) settings.get ("metronomo", "contagem", 1));
+    const double volumeDb = juce::jlimit (-40.0, 0.0, (double) settings.get ("metronomo", "volumeDb", -6.0));
+
+    metronomeToggle.setToggleState (on, juce::dontSendNotification);
+    bpmSlider.setValue (bpm, juce::dontSendNotification);
+    signatureCombo.setSelectedId (bpb, juce::dontSendNotification);
+    countInCombo.setSelectedId (countIn + 1, juce::dontSendNotification);
+    metronomeVolumeSlider.setValue (volumeDb, juce::dontSendNotification);
+
+    engine.setMetronomeOn (on);
+    engine.setTempo (bpm);
+    engine.setBeatsPerBar (bpb);
+    engine.setMetronomeGain (dbToGain (volumeDb));
+}
+
+void MainComponent::saveMetronomeSettings()
+{
+    settings.set ("metronomo", "ligado", metronomeToggle.getToggleState());
+    settings.set ("metronomo", "bpm", bpmSlider.getValue());
+    settings.set ("metronomo", "compasso", signatureCombo.getSelectedId());
+    settings.set ("metronomo", "contagem", juce::jmax (0, countInCombo.getSelectedId() - 1));
+    settings.set ("metronomo", "volumeDb", metronomeVolumeSlider.getValue());
+    settings.save();
+}
+
+void MainComponent::tapTempo()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    if (! tapTimes.empty() && now - tapTimes.back() > 2.0)
+        tapTimes.clear(); // pausa longa: recomeça
+    tapTimes.push_back (now);
+    if (tapTimes.size() > 8)
+        tapTimes.erase (tapTimes.begin());
+
+    if (tapTimes.size() < 3)
+    {
+        setStatus (L"Tap: continue batendo no ritmo...");
+        return;
+    }
+
+    const double interval = (tapTimes.back() - tapTimes.front()) / (double) (tapTimes.size() - 1);
+    const double bpm = juce::jlimit (30.0, 300.0, std::round (60.0 / interval));
+    bpmSlider.setValue (bpm, juce::sendNotificationSync);
+    saveMetronomeSettings();
+    setStatus ("Tap: " + juce::String ((int) bpm) + " BPM");
+}
+
+void MainComponent::updateMetronomeUi()
+{
+    const int bpb = engine.getBeatsPerBar();
+    const auto beat = engine.getMetronomeBeat();
+    const int inBar = (int) (((beat % bpb) + bpb) % bpb);
+    beatIndicator.setState (bpb, inBar, engine.getTransportState() == TransportState::countIn, engine.isMetronomeAudible());
+}
+
+mixexport::Gains MainComponent::currentMixGains() const
+{
+    mixexport::Gains g;
+    bool anySolo = false;
+    for (int t = 0; t < numTracks; ++t)
+        anySolo = anySolo || strips[t]->isSoloed();
+
+    for (int t = 0; t < numTracks; ++t)
+    {
+        const bool audible = ! strips[t]->isMuted() && (! anySolo || strips[t]->isSoloed());
+        g.track[t] = audible ? dbToGain (strips[t]->getGainDb()) : 0.0f;
+    }
+    g.master = dbToGain (masterStrip->getGainDb());
+    return g;
+}
+
+void MainComponent::exportMix (const juce::File& takeFolder)
+{
+    if (exportJob != nullptr)
+        return;
+
+    exportJob = std::make_unique<ExportJob> (takeFolder, currentMixGains());
+    setStatus (L"Exportando a mixagem de " + takeFolder.getFileName() + "...");
+    updateTransportUi();
+}
+
+void MainComponent::chooseTakeToExport()
+{
+    const auto* take = recorder.getLastTake();
+    fileChooser = std::make_unique<juce::FileChooser> (L"Take para exportar a mixagem",
+                                                       take != nullptr ? take->folder : recordingsDirectory());
+
+    juce::Component::SafePointer<MainComponent> safe (this);
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                              [safe] (const juce::FileChooser& fc)
+    {
+        const auto dir = fc.getResult();
+        if (safe != nullptr && dir != juce::File())
+            safe->exportMix (dir);
+    });
+}
+
+void MainComponent::pollExport()
+{
+    if (exportJob == nullptr)
+        return;
+
+    if (! exportJob->done.load())
+    {
+        if (timerTicks % 5 == 0)
+            setStatus (L"Exportando a mixagem... " + juce::String (juce::roundToInt (exportJob->progress.load() * 100.0f)) + "%");
+        return;
+    }
+
+    const auto r = exportJob->result;
+    const auto folder = exportJob->folder;
+    exportJob.reset();
+
+    if (r.ok)
+    {
+        juce::String text = L"Mixagem exportada: " + folder.getFileName() + "/" + r.file.getFileName() + " ("
+                          + juce::String (r.tracksUsed) + (r.tracksUsed == 1 ? " faixa, " : " faixas, ")
+                          + juce::String (r.seconds, 1).replaceCharacter ('.', ',') + " s)";
+        if (r.appliedGain < 1.0f)
+            text << L" · abaixada " << juce::String (juce::Decibels::gainToDecibels (r.appliedGain), 1).replaceCharacter ('.', ',')
+                 << L" dB para não clipar";
+        setStatus (text);
+        juce::Logger::writeToLog ("mixagem exportada: " + r.file.getFullPathName());
+        r.file.revealToUser();
+    }
+    else if (r.cancelled)
+    {
+        setStatus (L"Exportação cancelada.");
+    }
+    else
+    {
+        setStatus (r.error, true);
+    }
+    updateTransportUi();
+}
+
+void MainComponent::showAbout()
+{
+    juce::StringArray lines;
+    for (const auto& k : profiles.current().keys)
+        if (k.command != Command::none && k.key.isNotEmpty())
+            lines.add (k.key + "|" + commandLabel (k.command));
+    showAboutWindow (lines, settings.getDataDirectory());
 }
 
 // ---------------------------------------------------------------------------

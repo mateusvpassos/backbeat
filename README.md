@@ -25,14 +25,19 @@
   - Gravando com a captura ligada, sai também `chrome.wav` (24 bits estéreo), **com o mesmo início e tamanho** do `bateria.wav`: as duas faixas ficam alinhadas como você ouviu.
   - **Para não ouvir em dobro:** Configurações › Sistema › Som › Mixer de volume › Chrome › Dispositivo de saída = uma saída que você não usa. A captura pega o Chrome em qualquer saída.
 
-- **F5 (atual):** entradas da Behringer e mixer.
+- **F5:** entradas da Behringer e mixer.
   - **Mixer** com uma tira por faixa: **Bateria**, **Chrome**, **Entrada 1**, **Entrada 2** e **Master**. Fader em dB (duplo clique volta a 0 dB), VU, **M** (mudo) e **S** (solo: com alguma faixa em solo, só as faixas em solo tocam). Tudo sai pelo par de saídas escolhido na Behringer.
   - **Volume, mudo e solo só mudam o que você ouve:** a gravação é sempre antes do fader.
   - **Entradas** (mic/guitarra, canais 1 e 2 da Behringer): **● Gravar** arma a entrada para a próxima gravação (`entrada-1.wav`, `entrada-2.wav`, mono 24 bits); **Ouvir** passa a entrada pelo Backbeat (com atraso; com o Direct Monitor da Behringer, deixe desligado). O VU das entradas é antes do fader (é o nível gravado) e a borda fica vermelha se clipar.
   - **Compensação de latência:** quem toca junto ouve a bateria/música atrasada pela latência de saída, e o que entra pela Behringer chega atrasado pela latência de entrada. Por isso as entradas são gravadas **adiantadas em (entrada + saída)** — aqui 6,8 + 30,3 = 37,1 ms — com **ajuste fino** em ms; o fim é completado com silêncio, então todas as faixas do take têm o mesmo número de amostras.
 - **Visual da família:** mesma base dos outros apps (cores do `style.css`, painéis com borda e cantos de 12 px, fonte **Geist**, interruptores, listas escuras) com a cor própria do Backbeat, **laranja-âmbar**. Ícone em `assets/icon.svg` no mesmo desenho dos irmãos (monograma **B** + a "batida").
 
-Próxima fase: F6 metrônomo, contagem antes de gravar, exportar a mixagem em um WAV e polimento.
+- **F6 (atual):** metrônomo, contagem, exportar a mixagem e polimento (versão 1.0.0).
+  - **Metrônomo:** BPM (30–300, **Tap** para achar no ritmo da música), compasso 2/4 a 7/4, volume próprio. Clique sintetizado na thread de áudio, tempo 1 mais agudo; passa pelo Master e **nunca vai para a gravação**. **F7** liga/desliga (perfis novos; nos antigos, adicione em Mapeamento › Teclado › comando "Metrônomo").
+  - **Contagem antes de gravar:** sem contagem, 1 ou 2 compassos. Toca mesmo com o metrônomo desligado e o take começa exatamente no tempo 1 (a grade do metrônomo é o próprio take). Parar durante a contagem não deixa pasta vazia.
+  - O andamento e o compasso vão para o `bateria.mid` e o `sessao.json`: no FL Studio, com o mesmo BPM, as notas caem na grade.
+  - **Exportar mixagem:** junta as faixas do último take (ou de outro, em **...**) em `mixagem.wav` (estéreo, 24 bits) com os volumes, mudo e solo atuais do mixer. Se a soma passar de 0 dBFS, abaixa tudo até o pico ficar em −1 dBFS. Roda em segundo plano e abre a pasta no fim.
+  - Janela em três colunas (Áudio + Bateria · Gravação + Metrônomo · Chrome) e **Sobre** com versão, atalhos e licenças.
 
 ### Teclas padrão (perfil Nexus)
 | Tecla | Peça | | Tecla | Peça |
@@ -41,6 +46,7 @@ Próxima fase: F6 metrônomo, contagem antes de gravar, exportar a mixagem em um
 | `X` | Snare Center | | `Q` / `W` | Crash L / Crash R |
 | `C` / `V` | Chimbal fechado / aberto | | `E` / `R` | Ride / Ride Bell |
 | `B` | Pedal do chimbal | | `F9` `F10` `F8` | Gravar · Tocar · Parar (globais) |
+| | | | `F7` | Metrônomo liga/desliga (global) |
 
 ## Compilar
 
@@ -75,7 +81,7 @@ O JUCE 8.0.15 já traz os arquivos do **ASIO SDK da Steinberg** (licença GPLv3,
 
 ## Dados
 Em `%APPDATA%\Backbeat\`:
-- `settings.json`: dispositivo de áudio, caminho e estado do plugin (base64), entrada MIDI, modo de tempo, par de saídas, volume, perfil ativo, kit do SSD5 usado para os nomes das peças.
+- `settings.json`: dispositivo de áudio, caminho e estado do plugin (base64), entrada MIDI, modo de tempo, par de saídas, volume, perfil ativo, kit do SSD5 usado para os nomes das peças, mixer, entradas e metrônomo (BPM, compasso, contagem, volume).
 - `perfis\*.json`: perfis de mapeamento (pads, força, chimbal, teclas).
 - `backbeat.log`: tempos de inicialização e erros de dispositivo/plugin.
 

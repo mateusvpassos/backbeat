@@ -25,7 +25,8 @@ namespace takefiles
     void addMissingNoteOffs (std::vector<TakeEvent>& events, double gateSec = 0.05);
 
     // .mid tipo 1 com uma faixa "Bateria": andamento, compasso 4/4 e os eventos (canal preservado).
-    bool writeMidiFile (const juce::File& file, std::vector<TakeEvent> events, double bpm, const juce::String& trackName);
+    bool writeMidiFile (const juce::File& file, std::vector<TakeEvent> events, double bpm, const juce::String& trackName,
+                        int beatsPerBar = 4);
 
     // Lê qualquer .mid e devolve as mensagens de canal em segundos (todas as faixas, em ordem).
     std::vector<TakeEvent> readMidiFile (const juce::File& file);

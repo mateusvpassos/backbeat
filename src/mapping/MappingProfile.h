@@ -13,7 +13,8 @@ enum class Command
     record,   // gravar
     play,     // tocar
     stop,     // parar
-    panic     // pânico (para todas as notas)
+    panic,    // pânico (para todas as notas)
+    metronome // liga/desliga o metrônomo
 };
 
 juce::String commandId (Command c);          // "gravar", "tocar"...

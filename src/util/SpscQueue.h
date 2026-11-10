@@ -8,6 +8,11 @@
 namespace bb
 {
 
+#if defined (_MSC_VER)
+ #pragma warning (push)
+ #pragma warning (disable: 4324) // preenchimento proposital: índices em linhas de cache separadas
+#endif
+
 // Fila lock-free de um produtor e um consumidor, tamanho fixo (sem alocação).
 // Segura para usar na thread de áudio: push/pop nunca bloqueiam nem alocam.
 template <typename T, std::size_t Capacity>
@@ -59,5 +64,9 @@ private:
     alignas (64) std::atomic<std::size_t> writeIndex { 0 };
     alignas (64) std::atomic<std::size_t> readIndex { 0 };
 };
+
+#if defined (_MSC_VER)
+ #pragma warning (pop)
+#endif
 
 } // namespace bb

@@ -120,6 +120,24 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     mixBus.setSize (2, juce::jmax (bs, 4096), false, true, false);
     numDeviceInputs.store (device->getActiveInputChannels().countNumberOfSetBits());
 
+    // Metrônomo: dois cliques curtos (tempo 1 mais agudo), sintetizados uma vez aqui.
+    clickLength = juce::jmax (1, juce::roundToInt (0.035 * sr));
+    const auto makeClick = [&] (juce::AudioBuffer<float>& b, double freq, float level)
+    {
+        b.setSize (1, clickLength, false, true, false);
+        auto* d = b.getWritePointer (0);
+        for (int i = 0; i < clickLength; ++i)
+        {
+            const double t = i / sr;
+            const double env = (1.0 - std::exp (-t / 0.0006)) * std::exp (-t / 0.008);
+            d[i] = level * (float) (env * std::sin (juce::MathConstants<double>::twoPi * freq * t));
+        }
+    };
+    makeClick (clickAccent, 2000.0, 0.9f);
+    makeClick (clickBeat, 1300.0, 0.7f);
+    clickData = nullptr;
+    metroSamplesPerBeat = 0.0;
+
     deviceRunning.store (true);
 }
 
@@ -191,7 +209,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputs, 
     if (sr <= 0.0 || numSamples <= 0)
         return;
 
-    applyTransportRequest();
+    applyTransportRequest (numSamples);
+    if (getTransportState() == TransportState::countIn && countInRemaining <= 0)
+        beginRecording(); // a contagem acabou exatamente no começo deste bloco
     computeTrackGains();
     mixBus.clear (0, numSamples);
 
@@ -225,10 +245,15 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputs, 
 
     processChrome (numSamples);
     processInputs (inputs, numInputs, numSamples);
+    renderMetronome (numSamples);
     processMaster (outputs, numOutputs, numSamples);
 
     sampleCounter += (std::uint64_t) numSamples;
-    if (getTransportState() != TransportState::idle)
+    metroPos += numSamples;
+    const auto state = getTransportState();
+    if (state == TransportState::countIn)
+        countInRemaining -= numSamples;
+    else if (state != TransportState::idle)
         transportPosition.store (sampleCounter - transportStart, std::memory_order_relaxed);
 }
 
@@ -339,7 +364,7 @@ void AudioEngine::requestStop() noexcept
 // Transporte: thread de áudio
 // ---------------------------------------------------------------------------
 
-void AudioEngine::applyTransportRequest()
+void AudioEngine::applyTransportRequest (int numSamples)
 {
     const int request = pendingRequest.exchange (reqNone, std::memory_order_acquire);
     if (request == reqNone)
@@ -360,29 +385,130 @@ void AudioEngine::applyTransportRequest()
         return;
     }
 
-    transportStart = sampleCounter;
     transportPosition.store (0, std::memory_order_relaxed);
 
     if (request == reqRecord)
     {
-        const auto& t = requestedTargets;
-        activeWriter = t.drum;
-        activeChromeWriter = t.chrome;
-        audioSkipRemaining = t.pluginLatency;
-        chromeSkipRemaining = t.pluginLatency;
-        for (int k = 0; k < numInputTracks; ++k)
+        const int beats = requestedTargets.countInBeats;
+        const double sr = sampleRate.load (std::memory_order_relaxed);
+
+        if (beats > 0 && sr > 0.0)
         {
-            activeInputWriters[k] = t.inputs[k];
-            inputSkipRemaining[k] = t.inputCompensation + t.pluginLatency;
+            // A contagem é arredondada para blocos inteiros: a gravação começa no início de um bloco,
+            // exatamente no tempo 0. O primeiro clique da contagem cai um pouco depois deste bloco começar.
+            const double spb = 60.0 * sr / tempoBpm.load (std::memory_order_relaxed);
+            const auto samples = (std::int64_t) std::ceil (beats * spb);
+            const auto blocks = (samples + numSamples - 1) / numSamples;
+            countInRemaining = blocks * numSamples;
+            metroSamplesPerBeat = spb;
+            metroPos = -countInRemaining;
+            transportState.store ((int) TransportState::countIn, std::memory_order_release);
         }
-        transportState.store ((int) TransportState::recording, std::memory_order_release);
+        else
+        {
+            beginRecording();
+        }
     }
     else if (request == reqPlay)
     {
+        transportStart = sampleCounter;
+        metroPos = 0; // o metrônomo acompanha o take: tempo 1 na amostra 0
         playEvents = requestedEvents;
         playNumEvents = requestedNumEvents;
         playIndex = 0;
         transportState.store ((int) TransportState::playing, std::memory_order_release);
+    }
+}
+
+void AudioEngine::beginRecording() noexcept
+{
+    const auto& t = requestedTargets;
+    transportStart = sampleCounter;
+    transportPosition.store (0, std::memory_order_relaxed);
+    metroPos = 0;
+    countInRemaining = 0;
+    activeWriter = t.drum;
+    activeChromeWriter = t.chrome;
+    audioSkipRemaining = t.pluginLatency;
+    chromeSkipRemaining = t.pluginLatency;
+    for (int k = 0; k < numInputTracks; ++k)
+    {
+        activeInputWriters[k] = t.inputs[k];
+        inputSkipRemaining[k] = t.inputCompensation + t.pluginLatency;
+    }
+    transportState.store ((int) TransportState::recording, std::memory_order_release);
+}
+
+void AudioEngine::renderMetronome (int numSamples) noexcept
+{
+    const double sr = sampleRate.load (std::memory_order_relaxed);
+    if (sr <= 0.0 || clickLength <= 0)
+        return;
+
+    const bool audible = isMetronomeAudible();
+    const double spb = 60.0 * sr / tempoBpm.load (std::memory_order_relaxed);
+
+    if (audible && ! metroWasAudible && getTransportState() == TransportState::idle)
+        metroPos = 0; // acabou de ligar: o primeiro clique sai na hora
+    metroWasAudible = audible;
+
+    // Mudou o andamento: mantém a fase dentro do tempo (sem clique extra nem salto).
+    if (metroSamplesPerBeat > 0.0 && spb != metroSamplesPerBeat)
+        metroPos = (std::int64_t) std::llround ((double) metroPos * spb / metroSamplesPerBeat);
+    metroSamplesPerBeat = spb;
+
+    // Tempos que caem neste bloco: [metroPos, metroPos + numSamples).
+    constexpr int maxTriggers = 16;
+    int triggerAt[maxTriggers];
+    bool triggerAccent[maxTriggers];
+    int numTriggers = 0;
+    const int bpb = beatsPerBar.load (std::memory_order_relaxed);
+    const auto blockEnd = metroPos + numSamples;
+
+    for (auto beat = (std::int64_t) std::floor ((double) metroPos / spb) - 1;; ++beat)
+    {
+        const auto at = (std::int64_t) std::llround ((double) beat * spb);
+        if (at < metroPos)
+            continue;
+        if (at >= blockEnd)
+            break;
+
+        metronomeBeat.store (beat, std::memory_order_relaxed);
+        if (numTriggers < maxTriggers)
+        {
+            triggerAt[numTriggers] = (int) (at - metroPos);
+            triggerAccent[numTriggers] = ((beat % bpb) + bpb) % bpb == 0;
+            ++numTriggers;
+        }
+    }
+
+    if (! audible)
+    {
+        clickData = nullptr;
+        return;
+    }
+
+    const float gain = metronomeGain.load (std::memory_order_relaxed);
+    float* l = mixBus.getWritePointer (0);
+    float* r = mixBus.getWritePointer (1);
+
+    for (int i = 0, next = 0; i < numSamples; ++i)
+    {
+        if (next < numTriggers && triggerAt[next] == i)
+        {
+            clickData = triggerAccent[next] ? clickAccent.getReadPointer (0) : clickBeat.getReadPointer (0);
+            clickPos = 0;
+            ++next;
+        }
+
+        if (clickData != nullptr)
+        {
+            const float v = clickData[clickPos] * gain;
+            l[i] += v;
+            r[i] += v;
+            if (++clickPos >= clickLength)
+                clickData = nullptr;
+        }
     }
 }
 

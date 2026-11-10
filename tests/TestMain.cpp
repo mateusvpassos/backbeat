@@ -131,7 +131,7 @@ public:
             expectEquals (back.velocityCurve, 0.25);
             expect (back.hihatInvert);
             expect (! back.globalCommandKeys);
-            expect (back.keys.getReference (back.keys.size() - 1).command == Command::stop);
+            expect (back.keys.getReference (back.keys.size() - 1).command == Command::metronome);
 
             const auto a = p.compile(), b = back.compile();
             expect (a.noteTarget == b.noteTarget && a.velocity == b.velocity && a.hihatValue == b.hihatValue);

@@ -77,7 +77,8 @@ void addMissingNoteOffs (std::vector<TakeEvent>& events, double gateSec)
     sortByTime (events);
 }
 
-bool writeMidiFile (const juce::File& file, std::vector<TakeEvent> events, double bpm, const juce::String& trackName)
+bool writeMidiFile (const juce::File& file, std::vector<TakeEvent> events, double bpm, const juce::String& trackName,
+                    int beatsPerBar)
 {
     addMissingNoteOffs (events);
 
@@ -92,7 +93,7 @@ bool writeMidiFile (const juce::File& file, std::vector<TakeEvent> events, doubl
     tempo.setTimeStamp (0);
     track.addEvent (tempo);
 
-    auto signature = juce::MidiMessage::timeSignatureMetaEvent (4, 4);
+    auto signature = juce::MidiMessage::timeSignatureMetaEvent (juce::jlimit (1, 16, beatsPerBar), 4);
     signature.setTimeStamp (0);
     track.addEvent (signature);
 

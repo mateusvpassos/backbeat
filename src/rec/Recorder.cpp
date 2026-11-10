@@ -136,6 +136,7 @@ bool Recorder::startRecording (const juce::File& recordingsDir, const Metadata& 
         targets.inputs[k] = inputWriters[k].get();
     targets.pluginLatency = meta.pluginLatencySamples;
     targets.inputCompensation = meta.inputCompensationSamples;
+    targets.countInBeats = juce::jmax (0, meta.countInBars) * juce::jmax (1, meta.beatsPerBar);
 
     if (! engine.requestRecord (targets))
     {
@@ -146,7 +147,8 @@ bool Recorder::startRecording (const juce::File& recordingsDir, const Metadata& 
     }
 
     setState (State::recording);
-    message (L"Gravando em " + folder.getFileName());
+    message (targets.countInBeats > 0 ? juce::String (L"Contagem... a gravação começa no tempo 1.")
+                                      : L"Gravando em " + folder.getFileName());
     return true;
 }
 
@@ -166,6 +168,15 @@ void Recorder::finishRecording()
     drainRecordedMidi();
 
     const auto duration = drumWriter != nullptr ? (double) drumWriter->getWrittenSamples() / recordSampleRate : 0.0;
+
+    // Parou na contagem (ou antes do primeiro bloco): não sobra take vazio.
+    if (duration <= 0.0 && recorded.empty())
+    {
+        finishAllWriters();
+        currentFolder.deleteRecursively();
+        message (L"Gravação cancelada antes de começar.");
+        return;
+    }
     std::uint64_t droppedAudio = 0;
 
     if (drumWriter != nullptr)
@@ -215,7 +226,7 @@ void Recorder::finishRecording()
     take->durationSec = juce::jmax (duration, take->events.empty() ? 0.0 : take->events.back().timeSec);
 
     const bool midiOk = takefiles::writeMidiFile (currentFolder.getChildFile ("bateria.mid"), take->events,
-                                                  currentMeta.bpm, "Bateria");
+                                                  currentMeta.bpm, "Bateria", currentMeta.beatsPerBar);
 
     const auto droppedMidi = engine.getRecordedMidiDropped() - midiDroppedAtStart;
 
@@ -226,6 +237,8 @@ void Recorder::finishRecording()
     root->setProperty ("duracaoSegundos", take->durationSec);
     root->setProperty ("taxaAmostragem", recordSampleRate);
     root->setProperty ("bpm", currentMeta.bpm);
+    root->setProperty ("compasso", juce::String (currentMeta.beatsPerBar) + "/4");
+    root->setProperty ("contagemCompassos", currentMeta.countInBars);
     root->setProperty ("perfil", currentMeta.profile);
     root->setProperty ("kit", currentMeta.kit);
     root->setProperty ("plugin", currentMeta.plugin);
@@ -421,18 +434,20 @@ bool Recorder::loadLatestTake (const juce::File& recordingsDir)
 
     for (int i = folders.size(); --i >= 0;)
     {
+        // Take = pasta com notas no bateria.mid ou com o bateria.wav (um take só de guitarra também
+        // pode ser exportado, mesmo sem nenhuma nota).
         const auto midiFile = folders[i].getChildFile ("bateria.mid");
-        if (! midiFile.existsAsFile())
-            continue;
-
-        auto events = takefiles::readMidiFile (midiFile);
-        if (events.empty())
+        auto events = midiFile.existsAsFile() ? takefiles::readMidiFile (midiFile) : std::vector<TakeEvent>();
+        if (events.empty() && ! folders[i].getChildFile ("bateria.wav").existsAsFile())
             continue;
 
         auto take = std::make_unique<Take>();
         take->folder = folders[i];
         take->events = std::move (events);
-        take->durationSec = take->events.back().timeSec;
+        take->durationSec = take->events.empty() ? 0.0 : take->events.back().timeSec;
+        const auto session = juce::JSON::parse (folders[i].getChildFile ("sessao.json"));
+        if (session.hasProperty ("duracaoSegundos"))
+            take->durationSec = juce::jmax (take->durationSec, (double) session["duracaoSegundos"]);
         for (const auto& e : take->events)
             if (isNoteOnBytes (e.data, e.size))
                 ++take->noteCount;

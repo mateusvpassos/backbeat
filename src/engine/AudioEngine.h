@@ -20,7 +20,8 @@ enum class TransportState
 {
     idle = 0,
     recording,
-    playing
+    playing,
+    countIn     // contagem antes de gravar (metrônomo tocando, nada sendo gravado ainda)
 };
 
 // Faixas do mixer (F5). Tudo sai pelo mesmo par de saídas da Behringer.
@@ -42,6 +43,7 @@ struct RecordTargets
     DiskWriter* inputs[numInputTracks] {};
     int pluginLatency = 0;      // descarta o começo da bateria/Chrome (latência do plugin)
     int inputCompensation = 0;  // adianta as entradas: latência de entrada + saída (+ ajuste fino)
+    int countInBeats = 0;       // tempos de contagem antes de começar (0 = grava na hora)
 };
 
 // Callback ASIO: recebe o MIDI da fila lock-free, roda o plugin de bateria e manda pra saída.
@@ -90,6 +92,19 @@ public:
     float takeMasterPeakRight() noexcept     { return masterPeakR.exchange (0.0f); }
     bool takeMasterClip() noexcept           { return masterClip.exchange (false); }
     int getNumInputChannels() const noexcept { return numDeviceInputs.load(); }
+
+    // ---- Metrônomo (F6): clique sintetizado na thread de áudio, não vai para a gravação ----
+    // A grade é o próprio transporte: o tempo 1 do compasso 1 cai na amostra 0 do take.
+    // A contagem toca o clique mesmo com o metrônomo desligado.
+    void setMetronomeOn (bool on) noexcept       { metronomeOn.store (on); }
+    void setTempo (double bpm) noexcept          { tempoBpm.store (juce::jlimit (20.0, 400.0, bpm)); }
+    void setBeatsPerBar (int n) noexcept         { beatsPerBar.store (juce::jlimit (1, 16, n)); }
+    void setMetronomeGain (float g) noexcept     { metronomeGain.store (g); }
+    double getTempo() const noexcept             { return tempoBpm.load(); }
+    int getBeatsPerBar() const noexcept          { return beatsPerBar.load(); }
+    bool isMetronomeAudible() const noexcept     { return metronomeOn.load() || getTransportState() == TransportState::countIn; }
+    // Último tempo que passou (contado desde o início do take; negativo durante a contagem).
+    std::int64_t getMetronomeBeat() const noexcept { return metronomeBeat.load(); }
 
     // Para todas as notas (CC123 em todos os canais).
     void panic();
@@ -158,10 +173,12 @@ private:
     void computeTrackGains() noexcept;
     void processInputs (const float* const* inputs, int numInputs, int numSamples) noexcept;
     void processMaster (float* const* outputs, int numOutputs, int numSamples) noexcept;
+    void renderMetronome (int numSamples) noexcept;
+    void beginRecording() noexcept;
     static void storePeak (std::atomic<float>& target, float value) noexcept;
 
     // Transporte (thread de áudio)
-    void applyTransportRequest();
+    void applyTransportRequest (int numSamples);
     void addPlaybackEvents (int numSamples);
     void recordDrumAudio (const float* left, const float* right, int numSamples) noexcept;
     void recordDrumSilence (int numSamples) noexcept;
@@ -234,6 +251,21 @@ private:
     const TimedMidi* playEvents = nullptr;
     int playNumEvents = 0, playIndex = 0;
     bool notesOffRequested = false;
+
+    // ---- metrônomo ----
+    std::atomic<bool> metronomeOn { false };
+    std::atomic<double> tempoBpm { 120.0 };
+    std::atomic<int> beatsPerBar { 4 };
+    std::atomic<float> metronomeGain { 0.5f };
+    std::atomic<std::int64_t> metronomeBeat { 0 };
+    juce::AudioBuffer<float> clickAccent, clickBeat; // alocados em audioDeviceAboutToStart
+    // Só a thread de áudio:
+    std::int64_t metroPos = 0;          // amostras desde o tempo 0 (negativo durante a contagem)
+    double metroSamplesPerBeat = 0.0;
+    bool metroWasAudible = false;
+    const float* clickData = nullptr;
+    int clickPos = 0, clickLength = 0;
+    std::int64_t countInRemaining = 0;
 
     SpscQueue<TimedMidi, 8192> recordedMidi;
     std::atomic<std::uint32_t> recordedMidiDropped { 0 };

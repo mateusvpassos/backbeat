@@ -36,6 +36,8 @@ public:
     void setArm (bool a)     { arm.setToggleState (a, juce::dontSendNotification); repaint(); }
     void setMonitor (bool m) { monitor.setToggleState (m, juce::dontSendNotification); repaint(); }
     bool isArmed() const     { return arm.getToggleState(); }
+    bool isMuted() const     { return mute.getToggleState(); }
+    bool isSoloed() const    { return solo.getToggleState(); }
     void setCaption (const juce::String& text) { caption.setText (text, juce::dontSendNotification); }
     juce::String getName() const { return config.name; }
 

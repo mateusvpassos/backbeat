@@ -25,7 +25,9 @@ public:
     struct Metadata
     {
         juce::String profile, kit, plugin, midiTiming;
-        double bpm = 120.0;
+        double bpm = 120.0;            // andamento do metrônomo (vai para o .mid e o sessao.json)
+        int beatsPerBar = 4;
+        int countInBars = 0;           // compassos de contagem antes de começar
         int pluginLatencySamples = 0;
         bool recordChrome = false;     // gravar também o chrome.wav (captura ligada)
         juce::String chromeProcess;
@@ -57,6 +59,7 @@ public:
     void poll();
 
     State getState() const noexcept { return state; }
+    bool isCountingIn() const noexcept { return state == State::recording && engine.getTransportState() == TransportState::countIn; }
     double getPositionSeconds() const;
     int getRecordingNoteCount() const noexcept { return liveNoteCount; }
     float getDiskFillLevel() const noexcept { return drumWriter != nullptr ? drumWriter->getFillLevel() : 0.0f; }

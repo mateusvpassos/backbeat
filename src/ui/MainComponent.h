@@ -8,8 +8,10 @@
 #include "input/GlobalHotkeys.h"
 #include "mapping/DrumCatalog.h"
 #include "mapping/ProfileManager.h"
+#include "rec/MixExporter.h"
 #include "rec/Recorder.h"
 #include "capture/ChromeCapture.h"
+#include "ui/BeatIndicator.h"
 #include "ui/ChannelStrip.h"
 #include "ui/LevelMeter.h"
 #include "ui/MappingWindow.h"
@@ -63,6 +65,18 @@ private:
     int inputCompensationSamples() const;
     void chooseRecordingsFolder();
     juce::File recordingsDirectory() const;
+
+    // Metrônomo, contagem e exportação (F6)
+    void setupMetronome();
+    void loadMetronomeSettings();
+    void saveMetronomeSettings();
+    void tapTempo();
+    void updateMetronomeUi();
+    void exportMix (const juce::File& takeFolder);
+    void chooseTakeToExport();
+    void pollExport();
+    mixexport::Gains currentMixGains() const;
+    void showAbout();
 
     // Inicialização
     void openAudioDevice();
@@ -127,7 +141,19 @@ private:
     juce::Label chromeHeader, chromeStatusLabel, chromeTipLabel, chromeProcessLabel;
     juce::ToggleButton chromeToggle { L"Capturar o áudio do Chrome" };
     juce::TextEditor chromeProcessEditor;
-    juce::Rectangle<int> leftColumn, rightColumn, mixerArea;
+    juce::Rectangle<int> leftColumn, middleColumn, rightColumn, mixerArea, topArea;
+
+    juce::Label metronomeHeader, bpmLabel, signatureLabel, countInLabel, metronomeVolumeLabel;
+    juce::ToggleButton metronomeToggle { L"Clique" };
+    juce::Slider bpmSlider, metronomeVolumeSlider;
+    juce::TextButton tapButton { "Tap" }, exportButton { "Exportar mixagem" }, exportOtherButton { "..." },
+                     aboutButton { "Sobre" };
+    juce::ComboBox signatureCombo, countInCombo;
+    BeatIndicator beatIndicator;
+    std::vector<double> tapTimes;
+
+    class ExportJob;
+    std::unique_ptr<ExportJob> exportJob;
 
     juce::Label mixerHeader, outputPairLabel, compensationLabel, compensationInfo, mixerHint;
     juce::ComboBox outputCombo;

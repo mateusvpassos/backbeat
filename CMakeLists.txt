@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(Backbeat VERSION 0.1.0 LANGUAGES C CXX)
+project(Backbeat VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,6 +71,7 @@ target_sources(Backbeat PRIVATE
     src/mapping/MappingProfile.cpp
     src/mapping/ProfileManager.cpp
     src/rec/DiskWriter.cpp
+    src/rec/MixExporter.cpp
     src/rec/Recorder.cpp
     src/rec/TakeFiles.cpp
     src/util/Settings.cpp
@@ -80,6 +81,8 @@ target_sources(Backbeat PRIVATE
     src/ui/LevelMeter.cpp
     src/ui/BackbeatLookAndFeel.cpp
     src/ui/ChannelStrip.cpp
+    src/ui/AboutWindow.cpp
+    src/ui/BeatIndicator.cpp
     src/ui/MappingWindow.cpp
     src/ui/PadsPage.cpp
     src/ui/KeysPage.cpp)
@@ -117,6 +120,7 @@ target_sources(BackbeatTests PRIVATE
     tests/RecordingTests.cpp
     tests/HotkeyTests.cpp
     tests/DriftTests.cpp
+    tests/MetronomeTests.cpp
     src/engine/AudioEngine.cpp
     src/engine/DriftResampler.cpp
     src/input/GlobalHotkeys.cpp
@@ -124,6 +128,7 @@ target_sources(BackbeatTests PRIVATE
     src/mapping/MappingProfile.cpp
     src/mapping/ProfileManager.cpp
     src/rec/DiskWriter.cpp
+    src/rec/MixExporter.cpp
     src/rec/TakeFiles.cpp
     src/util/Settings.cpp
     src/util/DrumNames.cpp)
