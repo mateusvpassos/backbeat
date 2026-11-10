@@ -1,6 +1,6 @@
 # Backbeat
 
-Host de bateria eletrônica: EDRUM (MIDI) → SSD5 (VST3) → Behringer (ASIO). Futuro: captura do Chrome (WASAPI loopback por processo), entradas da Behringer, mixer e gravação em faixas.
+Host de bateria eletrônica: EDRUM (MIDI) → SSD5 (VST3) → Behringer (ASIO), com captura do Chrome (WASAPI loopback por processo), entradas da Behringer, mixer e gravação em faixas sincronizadas.
 
 C++20 / JUCE 8.0.15 / CMake (gerador VS 2026). Interface em português do Brasil.
 
@@ -19,6 +19,8 @@ C++20 / JUCE 8.0.15 / CMake (gerador VS 2026). Interface em português do Brasil
 - Mapeamento: o perfil vira uma `MappingTable` (POD) publicada por `SeqLock` para a thread MIDI. Teclado do PC e botão "testar" entram por `AudioEngine::pushUiMidi` (fila separada; cada `SpscQueue` tem um produtor só).
 - Gravação: `DiskWriter` (FIFO lock-free + thread que acorda sozinha; nunca `ThreadedWriter`, que chama `notify()` do áudio). Transporte por pedidos atômicos aplicados no início do bloco; recursos só são liberados depois de `takeResourcesReleased()`. Bloco sem plugin grava silêncio (o WAV nunca encurta). `tests/RecordingTests.cpp` roda o AudioEngine com dispositivo e plugin falsos e confere MIDI x WAV amostra a amostra.
 - Chrome: `ProcessLoopbackCapture` (COM/WASAPI numa thread própria, formato na taxa do ASIO) → `LoopbackStream` (FIFO lock-free) → `DriftResampler` na thread de áudio (Lagrange + PI no nível do FIFO, alvo 40 ms). `AudioEngine::setChromeStream` usa handshake seq_cst; só destrua o stream depois que ele voltar. `tests/DriftTests.cpp` simula 30 min com deriva.
+- Mixer (F5): faixas `TrackId` com ganho/mudo/solo atômicos; tudo soma no `mixBus` e sai pelo master. Gravação sempre antes do fader. Entradas gravadas adiantadas em `RecordTargets::inputCompensation` (entrada + saída + ajuste fino) e completadas com silêncio no fim pelo `Recorder`. Coberto em `tests/RecordingTests.cpp` (MixerTest).
+- Visual: siga a família (Riff/Rubato/Stinger...). Cores em `ui/Theme.h` (mesmas variáveis do `style.css`, cor própria laranja-âmbar), componentes em `ui/BackbeatLookAndFeel.cpp`, fonte Geist embutida (`assets/fonts`, via `juce_add_binary_data`). Botões: propriedade `variant` ("primary"/"ghost") e `onColour` para o estado ligado. Ícone: `assets/icon.svg` (vira o ícone do .exe).
 - Títulos em maiúsculas: `theme::upper()` (o `toUpperCase` do JUCE não converte ç/í).
 - Teclas no Windows: o JUCE marca F1–F12/setas com o bit 0x10000; nunca converter minúscula→maiúscula sem checar esse bit (o F9 é 0x78 = 'x'). Coberto em `tests/HotkeyTests.cpp`.
 - Testes de ponta a ponta no app: `BACKBEAT_DATA` temporário com `gravacao.pasta` também temporária, para não escrever em `Música\Backbeat`.

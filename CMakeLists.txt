@@ -43,7 +43,20 @@ set(BACKBEAT_COMMON_DEFS
 juce_add_gui_app(Backbeat
     PRODUCT_NAME "Backbeat"
     COMPANY_NAME "mateusvpassos"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.svg"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.svg"
     VERSION ${PROJECT_VERSION})
+
+# Ícone e fontes da família (Geist, OFL) embutidos no executável.
+juce_add_binary_data(BackbeatAssets
+    HEADER_NAME BackbeatAssets.h
+    NAMESPACE BackbeatAssets
+    SOURCES
+        assets/icon.svg
+        assets/fonts/Geist-Regular.ttf
+        assets/fonts/Geist-Medium.ttf
+        assets/fonts/Geist-SemiBold.ttf
+        assets/fonts/GeistMono-Medium.ttf)
 
 target_sources(Backbeat PRIVATE
     src/Main.cpp
@@ -65,6 +78,8 @@ target_sources(Backbeat PRIVATE
     src/ui/MainComponent.cpp
     src/ui/PluginWindow.cpp
     src/ui/LevelMeter.cpp
+    src/ui/BackbeatLookAndFeel.cpp
+    src/ui/ChannelStrip.cpp
     src/ui/MappingWindow.cpp
     src/ui/PadsPage.cpp
     src/ui/KeysPage.cpp)
@@ -81,6 +96,7 @@ target_compile_definitions(Backbeat PRIVATE
 
 target_link_libraries(Backbeat
     PRIVATE
+        BackbeatAssets
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_audio_devices

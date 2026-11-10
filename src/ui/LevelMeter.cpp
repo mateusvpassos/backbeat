@@ -2,6 +2,8 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "ui/Theme.h"
+
 namespace bb
 {
 
@@ -28,28 +30,47 @@ void LevelMeter::setPeak (float linearPeak)
         holdDb = juce::jmax (levelDb, holdDb - 1.0f);
     }
 
+    if (clipFrames > 0)
+        --clipFrames;
+
     repaint();
+}
+
+void LevelMeter::setClipped (bool clippedNow)
+{
+    if (clippedNow)
+        clipFrames = 60; // ~2 s a 30 quadros/s
 }
 
 void LevelMeter::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff2c313c));
-    g.fillRoundedRectangle (r, 3.0f);
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+    const float corner = juce::jmin (4.0f, (vertical ? r.getWidth() : r.getHeight()) * 0.5f);
 
-    const float w = r.getWidth() * toProportion (levelDb);
-    const auto barColour = levelDb > -1.0f ? juce::Colour (0xffe5484d)
-                         : levelDb > -12.0f ? juce::Colour (0xfff5a524)
-                                            : juce::Colour (0xff3fb67b);
-    g.setColour (barColour);
-    g.fillRoundedRectangle (r.withWidth (w), 3.0f);
+    g.setColour (theme::field);
+    g.fillRoundedRectangle (r, corner);
+
+    const float p = toProportion (levelDb);
+    const auto colour = levelDb > -1.0f ? theme::danger : levelDb > -6.0f ? theme::warn : barColour;
+    g.setColour (colour);
+
+    if (vertical)
+        g.fillRoundedRectangle (r.withTop (r.getBottom() - r.getHeight() * p), corner);
+    else
+        g.fillRoundedRectangle (r.withWidth (r.getWidth() * p), corner);
 
     if (holdDb > floorDb)
     {
-        const float x = r.getX() + r.getWidth() * toProportion (holdDb);
-        g.setColour (juce::Colours::white.withAlpha (0.8f));
-        g.fillRect (juce::Rectangle<float> (x - 1.0f, r.getY(), 2.0f, r.getHeight()));
+        const float hp = toProportion (holdDb);
+        g.setColour (juce::Colours::white.withAlpha (0.7f));
+        if (vertical)
+            g.fillRect (juce::Rectangle<float> (r.getX(), r.getBottom() - r.getHeight() * hp - 1.0f, r.getWidth(), 2.0f));
+        else
+            g.fillRect (juce::Rectangle<float> (r.getX() + r.getWidth() * hp - 1.0f, r.getY(), 2.0f, r.getHeight()));
     }
+
+    g.setColour (clipFrames > 0 ? theme::danger : theme::border);
+    g.drawRoundedRectangle (r, corner, 1.0f);
 }
 
 } // namespace bb

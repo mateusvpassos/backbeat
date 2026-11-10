@@ -1,5 +1,6 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "ui/BackbeatLookAndFeel.h"
 #include "ui/MainComponent.h"
 #include "util/Settings.h"
 
@@ -10,12 +11,12 @@ class MainWindow final : public juce::DocumentWindow
 {
 public:
     explicit MainWindow (const juce::String& name)
-        : juce::DocumentWindow (name, juce::Colour (0xff121418), juce::DocumentWindow::allButtons)
+        : juce::DocumentWindow (name, theme::bg, juce::DocumentWindow::allButtons)
     {
         setUsingNativeTitleBar (true);
         setContentOwned (new MainComponent(), true);
         setResizable (true, true);
-        setResizeLimits (1060, 600, 2000, 1400);
+        setResizeLimits (1060, 740, 2400, 1600);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
 
@@ -55,8 +56,8 @@ public:
                                             "Backbeat " + getApplicationVersion() + " iniciado", 256 * 1024));
         juce::Logger::setCurrentLogger (logger.get());
 
-        lookAndFeel.setColourScheme (juce::LookAndFeel_V4::getDarkColourScheme());
-        juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+        lookAndFeel = std::make_unique<BackbeatLookAndFeel>(); // visual da família (Geist, cores, botões)
+        juce::LookAndFeel::setDefaultLookAndFeel (lookAndFeel.get());
         mainWindow = std::make_unique<MainWindow> (getApplicationName());
         juce::Logger::writeToLog ("janela principal pronta");
 
@@ -69,6 +70,7 @@ public:
     {
         mainWindow.reset();
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+        lookAndFeel.reset();
         juce::Logger::writeToLog ("encerrado");
         juce::Logger::setCurrentLogger (nullptr);
         logger.reset();
@@ -84,7 +86,7 @@ public:
 
 private:
     std::unique_ptr<juce::FileLogger> logger;
-    juce::LookAndFeel_V4 lookAndFeel;
+    std::unique_ptr<BackbeatLookAndFeel> lookAndFeel;
     std::unique_ptr<MainWindow> mainWindow;
 };
 

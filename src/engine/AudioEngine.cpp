@@ -116,6 +116,10 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     chromeResampler.prepare (sr, juce::jmax (bs, 512));
     chromeBuffer.setSize (2, juce::jmax (bs, 512), false, true, false);
 
+    // Mixer: barramento estéreo com folga (o ASIO sempre entrega o mesmo tamanho de bloco).
+    mixBus.setSize (2, juce::jmax (bs, 4096), false, true, false);
+    numDeviceInputs.store (device->getActiveInputChannels().countNumberOfSetBits());
+
     deviceRunning.store (true);
 }
 
@@ -174,19 +178,22 @@ void AudioEngine::collectMidi (int numSamples, double blockStartSec)
     drain (uiMidiQueue);
 }
 
-void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int,
+void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputs, int numInputs,
                                                     float* const* outputs, int numOutputs,
-                                                    int numSamples, const juce::AudioIODeviceCallbackContext&)
+                                                    int numSamplesIn, const juce::AudioIODeviceCallbackContext&)
 {
     for (int ch = 0; ch < numOutputs; ++ch)
         if (outputs[ch] != nullptr)
-            juce::FloatVectorOperations::clear (outputs[ch], numSamples);
+            juce::FloatVectorOperations::clear (outputs[ch], numSamplesIn);
 
     const auto sr = sampleRate.load (std::memory_order_relaxed);
+    const int numSamples = juce::jmin (numSamplesIn, mixBus.getNumSamples());
     if (sr <= 0.0 || numSamples <= 0)
         return;
 
     applyTransportRequest();
+    computeTrackGains();
+    mixBus.clear (0, numSamples);
 
     // Início "virtual" deste bloco = agora menos a duração de um bloco (usado no modo estável).
     const double nowSec = juce::Time::getMillisecondCounterHiRes() * 0.001;
@@ -212,18 +219,41 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int,
         else
         {
             for (int start = 0; start < numSamples; start += maxChunk)
-                renderChunk (outputs, numOutputs, start, juce::jmin (maxChunk, numSamples - start));
+                renderChunk (start, juce::jmin (maxChunk, numSamples - start));
         }
     }
 
-    processChrome (outputs, numOutputs, numSamples);
+    processChrome (numSamples);
+    processInputs (inputs, numInputs, numSamples);
+    processMaster (outputs, numOutputs, numSamples);
 
     sampleCounter += (std::uint64_t) numSamples;
     if (getTransportState() != TransportState::idle)
         transportPosition.store (sampleCounter - transportStart, std::memory_order_relaxed);
 }
 
-void AudioEngine::renderChunk (float* const* outputs, int numOutputs, int start, int len)
+void AudioEngine::storePeak (std::atomic<float>& target, float value) noexcept
+{
+    float current = target.load (std::memory_order_relaxed);
+    while (value > current && ! target.compare_exchange_weak (current, value, std::memory_order_relaxed)) {}
+}
+
+void AudioEngine::computeTrackGains() noexcept
+{
+    bool anySolo = false;
+    for (auto& t : tracks)
+        anySolo = anySolo || t.solo.load (std::memory_order_relaxed);
+
+    for (int i = 0; i < numTracks; ++i)
+    {
+        const auto& t = tracks[i];
+        const bool audible = ! t.mute.load (std::memory_order_relaxed)
+                          && (! anySolo || t.solo.load (std::memory_order_relaxed));
+        blockGains[i] = audible ? t.gain.load (std::memory_order_relaxed) : 0.0f;
+    }
+}
+
+void AudioEngine::renderChunk (int start, int len)
 {
     auto& p = *plugin;
 
@@ -243,8 +273,7 @@ void AudioEngine::renderChunk (float* const* outputs, int numOutputs, int start,
     pluginBuffer.clear();
     p.processBlock (pluginBuffer, chunkMidi);
 
-    const float gain = drumGain.load (std::memory_order_relaxed);
-    const int pair = outputPair.load (std::memory_order_relaxed);
+    const float gain = blockGains[trackDrums];
     const int pluginOuts = juce::jmin (p.getTotalNumOutputChannels(), pluginBufferChannels);
 
     const float* left  = pluginOuts > 0 ? pluginBuffer.getReadPointer (0) : nullptr;
@@ -258,37 +287,28 @@ void AudioEngine::renderChunk (float* const* outputs, int numOutputs, int start,
 
     recordDrumAudio (left, right, len); // saída crua do plugin (o volume só afeta o que você ouve)
 
-    float* outL = (pair < numOutputs)     ? outputs[pair]     : nullptr;
-    float* outR = (pair + 1 < numOutputs) ? outputs[pair + 1] : nullptr;
-
-    if (outL != nullptr) juce::FloatVectorOperations::addWithMultiply (outL + start, left, gain, len);
-    if (outR != nullptr) juce::FloatVectorOperations::addWithMultiply (outR + start, right, gain, len);
+    juce::FloatVectorOperations::addWithMultiply (mixBus.getWritePointer (0, start), left, gain, len);
+    juce::FloatVectorOperations::addWithMultiply (mixBus.getWritePointer (1, start), right, gain, len);
 
     const auto rangeL = juce::FloatVectorOperations::findMinAndMax (left, len);
     const auto rangeR = juce::FloatVectorOperations::findMinAndMax (right, len);
-    const float pl = juce::jmax (std::abs (rangeL.getStart()), std::abs (rangeL.getEnd())) * gain;
-    const float pr = juce::jmax (std::abs (rangeR.getStart()), std::abs (rangeR.getEnd())) * gain;
-
-    // Máximo atômico (a UI zera com exchange).
-    for (auto [peak, value] : { std::pair { &peakLeft, pl }, std::pair { &peakRight, pr } })
-    {
-        float current = peak->load (std::memory_order_relaxed);
-        while (value > current && ! peak->compare_exchange_weak (current, value, std::memory_order_relaxed)) {}
-    }
+    const float peak = juce::jmax (juce::jmax (std::abs (rangeL.getStart()), std::abs (rangeL.getEnd())),
+                                   juce::jmax (std::abs (rangeR.getStart()), std::abs (rangeR.getEnd())));
+    storePeak (tracks[trackDrums].peak, peak * gain);
 }
 
 // ---------------------------------------------------------------------------
 // Transporte: pedidos (thread de mensagens)
 // ---------------------------------------------------------------------------
 
-bool AudioEngine::requestRecord (DiskWriter* drumWriter, DiskWriter* chromeWriter, int skipAudioSamples) noexcept
+bool AudioEngine::requestRecord (const RecordTargets& targets) noexcept
 {
     if (getTransportState() != TransportState::idle || pendingRequest.load() != reqNone)
         return false;
 
-    requestedWriter = drumWriter;
-    requestedChromeWriter = chromeWriter;
-    requestedSkip = juce::jmax (0, skipAudioSamples);
+    requestedTargets = targets;
+    requestedTargets.pluginLatency = juce::jmax (0, targets.pluginLatency);
+    requestedTargets.inputCompensation = juce::jmax (0, targets.inputCompensation);
     resourcesReleased.store (false);
     pendingRequest.store (reqRecord, std::memory_order_release);
     return true;
@@ -345,10 +365,16 @@ void AudioEngine::applyTransportRequest()
 
     if (request == reqRecord)
     {
-        activeWriter = requestedWriter;
-        activeChromeWriter = requestedChromeWriter;
-        audioSkipRemaining = requestedSkip;
-        chromeSkipRemaining = requestedSkip;
+        const auto& t = requestedTargets;
+        activeWriter = t.drum;
+        activeChromeWriter = t.chrome;
+        audioSkipRemaining = t.pluginLatency;
+        chromeSkipRemaining = t.pluginLatency;
+        for (int k = 0; k < numInputTracks; ++k)
+        {
+            activeInputWriters[k] = t.inputs[k];
+            inputSkipRemaining[k] = t.inputCompensation + t.pluginLatency;
+        }
         transportState.store ((int) TransportState::recording, std::memory_order_release);
     }
     else if (request == reqPlay)
@@ -364,6 +390,8 @@ void AudioEngine::endTransport (bool sendNotesOff)
 {
     activeWriter = nullptr;
     activeChromeWriter = nullptr;
+    for (auto& w : activeInputWriters)
+        w = nullptr;
     playEvents = nullptr;
     playNumEvents = playIndex = 0;
     notesOffRequested = notesOffRequested || sendNotesOff;
@@ -448,17 +476,14 @@ void AudioEngine::setChromeStream (LoopbackStream* stream) noexcept
     chromeResampler.requestReset();
 }
 
-void AudioEngine::processChrome (float* const* outputs, int numOutputs, int numSamples) noexcept
+void AudioEngine::processChrome (int numSamples) noexcept
 {
     const int maxChunk = chromeBuffer.getNumSamples();
     if (maxChunk <= 0)
         return;
 
     const bool recording = getTransportState() == TransportState::recording && activeChromeWriter != nullptr;
-    const float gain = chromeMuted.load (std::memory_order_relaxed) ? 0.0f : chromeGain.load (std::memory_order_relaxed);
-    const int pair = outputPair.load (std::memory_order_relaxed);
-    float* outL = (pair < numOutputs)     ? outputs[pair]     : nullptr;
-    float* outR = (pair + 1 < numOutputs) ? outputs[pair + 1] : nullptr;
+    const float gain = blockGains[trackChrome];
 
     for (int start = 0; start < numSamples; start += maxChunk)
     {
@@ -473,26 +498,84 @@ void AudioEngine::processChrome (float* const* outputs, int numOutputs, int numS
         if (recording)
         {
             // Sempre escreve (mesmo silêncio): o chrome.wav fica com o mesmo tamanho e início da bateria.
-            int skip = juce::jmin (chromeSkipRemaining, len);
+            const int skip = juce::jmin (chromeSkipRemaining, len);
             chromeSkipRemaining -= skip;
             const float* channels[] = { l + skip, r + skip };
             activeChromeWriter->write (channels, 2, len - skip);
         }
 
-        if (outL != nullptr) juce::FloatVectorOperations::addWithMultiply (outL + start, l, gain, len);
-        if (outR != nullptr) juce::FloatVectorOperations::addWithMultiply (outR + start, r, gain, len);
+        juce::FloatVectorOperations::addWithMultiply (mixBus.getWritePointer (0, start), l, gain, len);
+        juce::FloatVectorOperations::addWithMultiply (mixBus.getWritePointer (1, start), r, gain, len);
 
         const auto rangeL = juce::FloatVectorOperations::findMinAndMax (l, len);
         const auto rangeR = juce::FloatVectorOperations::findMinAndMax (r, len);
-        const float pl = juce::jmax (std::abs (rangeL.getStart()), std::abs (rangeL.getEnd())) * gain;
-        const float pr = juce::jmax (std::abs (rangeR.getStart()), std::abs (rangeR.getEnd())) * gain;
+        storePeak (tracks[trackChrome].peak,
+                   gain * juce::jmax (juce::jmax (std::abs (rangeL.getStart()), std::abs (rangeL.getEnd())),
+                                      juce::jmax (std::abs (rangeR.getStart()), std::abs (rangeR.getEnd()))));
+    }
+}
 
-        for (auto [peak, value] : { std::pair { &chromePeakL, pl }, std::pair { &chromePeakR, pr } })
+void AudioEngine::processInputs (const float* const* inputs, int numInputs, int numSamples) noexcept
+{
+    const bool recording = getTransportState() == TransportState::recording;
+
+    for (int k = 0; k < numInputTracks; ++k)
+    {
+        auto& t = tracks[trackInput1 + k];
+        const int ch = t.channel.load (std::memory_order_relaxed);
+        const float* in = (inputs != nullptr && ch < numInputs) ? inputs[ch] : nullptr;
+
+        if (in != nullptr)
         {
-            float current = peak->load (std::memory_order_relaxed);
-            while (value > current && ! peak->compare_exchange_weak (current, value, std::memory_order_relaxed)) {}
+            const auto range = juce::FloatVectorOperations::findMinAndMax (in, numSamples);
+            const float peak = juce::jmax (std::abs (range.getStart()), std::abs (range.getEnd()));
+            storePeak (t.peak, peak);                 // antes do fader: nível que vai para a gravação
+            if (peak >= 0.999f)
+                t.clip.store (true, std::memory_order_relaxed);
+        }
+
+        if (recording && activeInputWriters[k] != nullptr)
+        {
+            // Adianta a entrada: descarta as primeiras (latência de entrada + saída) amostras.
+            const int skip = juce::jmin (inputSkipRemaining[k], numSamples);
+            inputSkipRemaining[k] -= skip;
+            if (in != nullptr)
+            {
+                const float* channels[] = { in + skip };
+                activeInputWriters[k]->write (channels, 1, numSamples - skip);
+            }
+            else
+            {
+                activeInputWriters[k]->writeSilence (numSamples - skip); // sem o canal: mantém o alinhamento
+            }
+        }
+
+        const float gain = blockGains[trackInput1 + k];
+        if (in != nullptr && gain > 0.0f && t.monitor.load (std::memory_order_relaxed))
+        {
+            juce::FloatVectorOperations::addWithMultiply (mixBus.getWritePointer (0), in, gain, numSamples);
+            juce::FloatVectorOperations::addWithMultiply (mixBus.getWritePointer (1), in, gain, numSamples);
         }
     }
+}
+
+void AudioEngine::processMaster (float* const* outputs, int numOutputs, int numSamples) noexcept
+{
+    const float gain = masterGain.load (std::memory_order_relaxed);
+    mixBus.applyGain (0, numSamples, gain);
+
+    const int pair = outputPair.load (std::memory_order_relaxed);
+    float* outL = (pair < numOutputs)     ? outputs[pair]     : nullptr;
+    float* outR = (pair + 1 < numOutputs) ? outputs[pair + 1] : nullptr;
+    if (outL != nullptr) juce::FloatVectorOperations::copy (outL, mixBus.getReadPointer (0), numSamples);
+    if (outR != nullptr) juce::FloatVectorOperations::copy (outR, mixBus.getReadPointer (1), numSamples);
+
+    const float pl = mixBus.getMagnitude (0, 0, numSamples);
+    const float pr = mixBus.getMagnitude (1, 0, numSamples);
+    storePeak (masterPeakL, pl);
+    storePeak (masterPeakR, pr);
+    if (pl >= 1.0f || pr >= 1.0f)
+        masterClip.store (true, std::memory_order_relaxed);
 }
 
 void AudioEngine::recordDrumSilence (int numSamples) noexcept

@@ -18,14 +18,21 @@
   - O WAV é gravado por uma thread própria a partir de um FIFO lock-free de 10 s; a thread de áudio não espera o disco.
   - Para gravar, prefira **Ritmo estável** em "Tempo das notas": no modo **Menor latência** cada nota cai no início do bloco seguinte (até ~6 ms de oscilação, igual no `.mid` e no `.wav`).
 
-- **F4 (atual):** captura do Chrome (Songsterr) **sem cabo virtual nem Voicemeeter**, pelo loopback por processo do WASAPI (Windows 10 2004+). Seção **Chrome** na tela:
+- **F4:** captura do Chrome (Songsterr) **sem cabo virtual nem Voicemeeter**, pelo loopback por processo do WASAPI (Windows 10 2004+). Seção **Chrome** na tela:
   - **Capturar o áudio do Chrome** liga/desliga; o processo pode ser trocado (ex.: `msedge.exe`, `spotify.exe`). Se o Chrome fechar e abrir de novo, a captura volta sozinha.
   - O áudio é pedido na mesma taxa do ASIO (o Windows converte 48 kHz → 44,1 kHz). A pequena diferença de relógio entre a Behringer e o Windows (medida aqui: ~30 ppm ≈ 0,1 s por hora) é corrigida por um resampler adaptativo: o atraso do Chrome fica fixo em ~40 ms por horas (teste simulado de 30 min: 38,5–41,5 ms, sem faltas).
   - Volume, mudo e VU próprios; sai pela Behringer junto com a bateria.
   - Gravando com a captura ligada, sai também `chrome.wav` (24 bits estéreo), **com o mesmo início e tamanho** do `bateria.wav`: as duas faixas ficam alinhadas como você ouviu.
   - **Para não ouvir em dobro:** Configurações › Sistema › Som › Mixer de volume › Chrome › Dispositivo de saída = uma saída que você não usa. A captura pega o Chrome em qualquer saída.
 
-Próximas fases: F5 entradas da Behringer + mixer · F6 metrônomo, contagem, exportar mix e polimento.
+- **F5 (atual):** entradas da Behringer e mixer.
+  - **Mixer** com uma tira por faixa: **Bateria**, **Chrome**, **Entrada 1**, **Entrada 2** e **Master**. Fader em dB (duplo clique volta a 0 dB), VU, **M** (mudo) e **S** (solo: com alguma faixa em solo, só as faixas em solo tocam). Tudo sai pelo par de saídas escolhido na Behringer.
+  - **Volume, mudo e solo só mudam o que você ouve:** a gravação é sempre antes do fader.
+  - **Entradas** (mic/guitarra, canais 1 e 2 da Behringer): **● Gravar** arma a entrada para a próxima gravação (`entrada-1.wav`, `entrada-2.wav`, mono 24 bits); **Ouvir** passa a entrada pelo Backbeat (com atraso; com o Direct Monitor da Behringer, deixe desligado). O VU das entradas é antes do fader (é o nível gravado) e a borda fica vermelha se clipar.
+  - **Compensação de latência:** quem toca junto ouve a bateria/música atrasada pela latência de saída, e o que entra pela Behringer chega atrasado pela latência de entrada. Por isso as entradas são gravadas **adiantadas em (entrada + saída)** — aqui 6,8 + 30,3 = 37,1 ms — com **ajuste fino** em ms; o fim é completado com silêncio, então todas as faixas do take têm o mesmo número de amostras.
+- **Visual da família:** mesma base dos outros apps (cores do `style.css`, painéis com borda e cantos de 12 px, fonte **Geist**, interruptores, listas escuras) com a cor própria do Backbeat, **laranja-âmbar**. Ícone em `assets/icon.svg` no mesmo desenho dos irmãos (monograma **B** + a "batida").
+
+Próxima fase: F6 metrônomo, contagem antes de gravar, exportar a mixagem em um WAV e polimento.
 
 ### Teclas padrão (perfil Nexus)
 | Tecla | Peça | | Tecla | Peça |
@@ -75,4 +82,6 @@ Em `%APPDATA%\Backbeat\`:
 Para testar sem mexer nos seus dados: `$env:BACKBEAT_DATA = "C:\temp\bb-teste"`. `Backbeat.exe --mapeamento` abre direto a janela de mapeamento.
 
 ## Licença
+Fonte Geist (© The Geist Project Authors) sob SIL Open Font License 1.1: `assets/fonts/OFL.txt`. Os TTFs em `assets/fonts/` foram gerados (fonttools) a partir dos mesmos arquivos `.woff2` usados nos outros apps da família.
+
 Para uso pessoal. Se for distribuir: JUCE (AGPLv3 ou licença JUCE) + ASIO SDK (GPLv3) exigem código aberto compatível (AGPLv3).

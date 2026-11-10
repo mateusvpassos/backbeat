@@ -2,16 +2,23 @@
 
 #include "util/DrumNames.h"
 
+#include "BackbeatAssets.h"
+
 namespace bb
 {
 
 namespace
 {
-    const juce::Colour background   { 0xff121418 };
-    const juce::Colour panel        { 0xff1a1d23 };
-    const juce::Colour accent       { 0xfff0673a }; // laranja "baqueta"
-    const juce::Colour textDim      { 0xff8b93a1 };
-    const juce::Colour errorColour  { 0xffe5484d };
+    // Cores e estilos da família (ui/Theme.h).
+    const juce::Colour& background = theme::bg;
+    const juce::Colour& panel = theme::panel;
+    const juce::Colour& accent = theme::accent;
+    const juce::Colour& textDim = theme::muted;
+    const juce::Colour& errorColour = theme::danger;
+
+    const char* const trackKeys[numTracks] = { "bateria", "chrome", "entrada1", "entrada2" };
+
+    float dbToGain (double db) { return db <= -59.95 ? 0.0f : juce::Decibels::decibelsToGain ((float) db); }
 
     juce::String ms (double samples, double sampleRate)
     {
@@ -20,35 +27,27 @@ namespace
         return juce::String (samples * 1000.0 / sampleRate, 1).replaceCharacter ('.', ',') + " ms";
     }
 
-    void styleHeader (juce::Label& l, const juce::String& text)
-    {
-        l.setText (theme::upper (text), juce::dontSendNotification);
-        l.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)));
-        l.setColour (juce::Label::textColourId, textDim);
-    }
+    void styleHeader (juce::Label& l, const juce::String& text) { theme::header (l, text); }
 
     void styleBody (juce::Label& l)
     {
-        l.setFont (juce::Font (juce::FontOptions (15.0f)));
-        l.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
+        l.setFont (theme::font (13.5f));
+        l.setColour (juce::Label::textColourId, theme::text);
     }
 
-    void styleCaption (juce::Label& l, const juce::String& text)
-    {
-        l.setText (text, juce::dontSendNotification);
-        l.setFont (juce::Font (juce::FontOptions (13.0f)));
-        l.setColour (juce::Label::textColourId, textDim);
-    }
+    void styleCaption (juce::Label& l, const juce::String& text) { theme::caption (l, text); }
 }
 
 MainComponent::MainComponent()
 {
     // ---------- interface ----------
     titleLabel.setText ("Backbeat", juce::dontSendNotification);
-    titleLabel.setFont (juce::Font (juce::FontOptions (26.0f, juce::Font::bold)));
-    titleLabel.setColour (juce::Label::textColourId, accent);
+    titleLabel.setFont (theme::font (16.0f, theme::Weight::semibold));
+    titleLabel.setColour (juce::Label::textColourId, theme::text);
     subtitleLabel.setText (L"bateria eletrônica + SSD5, via ASIO", juce::dontSendNotification);
+    subtitleLabel.setFont (theme::font (12.5f));
     subtitleLabel.setColour (juce::Label::textColourId, textDim);
+    logo = juce::Drawable::createFromImageData (BackbeatAssets::icon_svg, BackbeatAssets::icon_svgSize);
 
     styleHeader (deviceHeader, L"Áudio");
     styleBody (deviceLabel);
@@ -62,8 +61,8 @@ MainComponent::MainComponent()
     styleCaption (profileLabel, "Perfil");
 
     styleHeader (transportHeader, L"Gravação");
-    timeLabel.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 26.0f, juce::Font::bold)));
-    timeLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    timeLabel.setFont (theme::mono (26.0f));
+    timeLabel.setColour (juce::Label::textColourId, theme::text);
     styleBody (transportInfoLabel);
     styleCaption (folderLabel, {});
     recordButton.setTooltip (L"Grava o MIDI e o áudio da bateria (F9). Dica: o modo Ritmo estável deixa o tempo das notas exato.");
@@ -73,7 +72,6 @@ MainComponent::MainComponent()
 
     styleHeader (chromeHeader, "Chrome (Songsterr)");
     styleBody (chromeStatusLabel);
-    styleCaption (chromeGainLabel, "Volume");
     styleCaption (chromeProcessLabel, "Processo");
     styleCaption (chromeTipLabel, L"Para não ouvir o Chrome em dobro: Configurações › Sistema › Som › Mixer de volume › "
                                   L"Chrome › Dispositivo de saída = uma saída que você não usa (ex.: alto-falantes da placa-mãe). "
@@ -81,32 +79,27 @@ MainComponent::MainComponent()
     chromeTipLabel.setJustificationType (juce::Justification::topLeft);
     chromeTipLabel.setMinimumHorizontalScale (1.0f);
     chromeProcessEditor.setTooltip (L"Nome do executável (ex.: chrome.exe, msedge.exe, spotify.exe)");
-    chromeGainSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    chromeGainSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
-    chromeGainSlider.setRange (-36.0, 6.0, 0.1);
-    chromeGainSlider.setTextValueSuffix (" dB");
-    chromeGainSlider.setDoubleClickReturnValue (true, 0.0);
     mappingButton.setTooltip (L"Escolher qual peça do SSD5 cada pad e cada tecla toca");
-    lastNoteLabel.setFont (juce::Font (juce::FontOptions (30.0f, juce::Font::bold)));
+    lastNoteLabel.setFont (theme::font (26.0f, theme::Weight::semibold));
     lastNoteLabel.setText ("bata num pad", juce::dontSendNotification);
     lastNoteLabel.setColour (juce::Label::textColourId, textDim);
     styleBody (lastNoteDetail);
     styleCaption (lastOtherLabel, {});
 
-    styleHeader (outputHeader, L"Saída da bateria");
-    styleCaption (outputPairLabel, L"Saídas");
-    styleCaption (gainLabel, "Volume");
+    styleHeader (mixerHeader, "Mixer");
+    styleCaption (outputPairLabel, L"Saída");
+    styleCaption (compensationLabel, L"Ajuste fino das entradas");
+    styleCaption (compensationInfo, {});
+    compensationInfo.setFont (theme::mono (11.5f));
+    styleCaption (mixerHint, L"A gravação é sempre antes do fader: volume, mudo e solo só mudam o que você ouve.");
+    mixerHint.setFont (theme::font (11.5f));
+    mixerHint.setColour (juce::Label::textColourId, theme::dim);
 
     styleCaption (statusLabel, {});
 
     timingCombo.addItem (L"Menor latência", 1 + (int) AudioEngine::MidiTiming::lowestLatency);
     timingCombo.addItem (L"Ritmo estável (+1 buffer)", 1 + (int) AudioEngine::MidiTiming::steady);
 
-    gainSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    gainSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
-    gainSlider.setRange (-36.0, 6.0, 0.1);
-    gainSlider.setTextValueSuffix (" dB");
-    gainSlider.setDoubleClickReturnValue (true, 0.0);
 
     for (auto* c : std::initializer_list<juce::Component*> {
              &titleLabel, &subtitleLabel, &audioButton, &openPluginButton, &choosePluginButton,
@@ -116,12 +109,15 @@ MainComponent::MainComponent()
              &transportHeader, &recordButton, &playButton, &stopButton, &timeLabel, &transportInfoLabel,
              &folderLabel, &chooseFolderButton, &openTakeButton,
              &chromeHeader, &chromeToggle, &chromeProcessLabel, &chromeProcessEditor, &chromeStatusLabel,
-             &chromeGainLabel, &chromeGainSlider, &chromeMuteButton, &chromeMeterLeft, &chromeMeterRight, &chromeTipLabel,
-             &lastNoteLabel, &lastNoteDetail, &lastOtherLabel, &outputHeader, &outputPairLabel,
-             &outputCombo, &gainLabel, &gainSlider, &meterLeft, &meterRight, &statusLabel })
+             &chromeTipLabel, &lastNoteLabel, &lastNoteDetail, &lastOtherLabel,
+             &mixerHeader, &outputPairLabel, &outputCombo, &compensationLabel, &compensationSlider,
+             &compensationInfo, &mixerHint, &statusLabel })
         addAndMakeVisible (c);
 
-    openPluginButton.setColour (juce::TextButton::buttonColourId, accent.darker (0.3f));
+    openPluginButton.getProperties().set ("variant", "primary");
+    recordButton.getProperties().set ("onColour", (juce::int64) theme::danger.getARGB());
+    playButton.getProperties().set ("onColour", (juce::int64) theme::ok.getARGB());
+    setupMixer();
 
     audioButton.onClick        = [this] { showAudioSettings(); };
     openPluginButton.onClick   = [this] { togglePluginWindow(); };
@@ -176,17 +172,7 @@ MainComponent::MainComponent()
         }
     };
 
-    gainSlider.onValueChange = [this]
-    {
-        engine.setDrumGain (juce::Decibels::decibelsToGain ((float) gainSlider.getValue(), -100.0f));
-    };
-    gainSlider.onDragEnd = [this]
-    {
-        settings.set ("saida", "volumeBateriaDb", gainSlider.getValue());
-        settings.save();
-    };
-
-    setSize (1180, 640);
+    setSize (1180, 770);
 
     // ---------- núcleo ----------
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
@@ -204,13 +190,14 @@ MainComponent::MainComponent()
     timingCombo.setSelectedId (1 + (int) engine.getMidiTiming(), juce::dontSendNotification);
 
     engine.setOutputPair ((int) settings.get ("saida", "par", 0));
-    gainSlider.setValue ((double) settings.get ("saida", "volumeBateriaDb", 0.0), juce::sendNotificationSync);
+    loadMixerSettings();
 
     openAudioDevice();
     step ("dispositivo de audio aberto");
     deviceManager.addAudioCallback (&engine);
     deviceManager.addChangeListener (this);
     refreshOutputPairs();
+    updateInputCaptions();
 
     refreshMidiDevices();
     step ("entrada MIDI aberta");
@@ -251,30 +238,11 @@ MainComponent::MainComponent()
 
     // Chrome (F4)
     chromeProcessEditor.setText (settings.get ("chrome", "processo", "chrome.exe").toString(), false);
-    chromeGainSlider.setValue ((double) settings.get ("chrome", "volumeDb", 0.0), juce::dontSendNotification);
-    chromeMuteButton.setToggleState ((bool) settings.get ("chrome", "mudo", false), juce::dontSendNotification);
     chromeToggle.setToggleState ((bool) settings.get ("chrome", "ativo", false), juce::dontSendNotification);
 
     chromeToggle.onClick = [this] { applyChromeSettings(); };
     chromeProcessEditor.onReturnKey = [this] { applyChromeSettings(); };
     chromeProcessEditor.onFocusLost = [this] { if (chromeProcessEditor.getText() != chromeCapture.getExeName()) applyChromeSettings(); };
-    chromeMuteButton.onClick = [this]
-    {
-        engine.setChromeMuted (chromeMuteButton.getToggleState());
-        settings.set ("chrome", "mudo", chromeMuteButton.getToggleState());
-        settings.save();
-    };
-    chromeGainSlider.onValueChange = [this]
-    {
-        engine.setChromeGain (juce::Decibels::decibelsToGain ((float) chromeGainSlider.getValue(), -100.0f));
-    };
-    chromeGainSlider.onDragEnd = [this]
-    {
-        settings.set ("chrome", "volumeDb", chromeGainSlider.getValue());
-        settings.save();
-    };
-    engine.setChromeGain (juce::Decibels::decibelsToGain ((float) chromeGainSlider.getValue(), -100.0f));
-    engine.setChromeMuted (chromeMuteButton.getToggleState());
     applyChromeSettings();
     step ("captura do Chrome configurada");
     updateTransportUi();
@@ -420,6 +388,7 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
     // Dispositivo mudou (diálogo de áudio, driver resetou, etc.).
     saveDeviceState();
     refreshOutputPairs();
+    updateInputCaptions();
     updateDeviceStatus();
 }
 
@@ -480,7 +449,8 @@ void MainComponent::updateDeviceStatus()
     const int pluginLat = engine.getPlugin() != nullptr ? engine.getPlugin()->getLatencySamples() : 0;
     const bool steady = engine.getMidiTiming() == AudioEngine::MidiTiming::steady;
 
-    deviceLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
+    deviceLabel.setColour (juce::Label::textColourId, theme::text);
+    updateCompensationInfo();
     deviceLabel.setText (device->getTypeName() + L" · " + device->getName() + L" · "
                              + juce::String ((int) sr) + L" Hz · buffer " + juce::String (bs)
                              + " (" + ms (bs, sr) + ")",
@@ -522,6 +492,7 @@ void MainComponent::refreshMidiDevices()
     if (midiDevices.isEmpty())
     {
         midiCombo.setTextWhenNoChoicesAvailable (L"Nenhuma entrada MIDI (a EDRUM está ligada?)");
+        midiCombo.setTextWhenNothingSelected (L"Nenhuma entrada MIDI: ligue a EDRUM e clique em Atualizar");
         midiRouter.close();
         return;
     }
@@ -708,17 +679,18 @@ void MainComponent::choosePluginFile()
 void MainComponent::timerCallback()
 {
     drainMidiMonitor();
-    meterLeft.setPeak (engine.takePeakLeft());
-    meterRight.setPeak (engine.takePeakRight());
-    chromeMeterLeft.setPeak (engine.takeChromePeakLeft());
-    chromeMeterRight.setPeak (engine.takeChromePeakRight());
+    for (int t = 0; t < numTracks; ++t)
+    {
+        const float peak = engine.takeTrackPeak (t);
+        strips[t]->setLevels (peak, peak, engine.takeTrackClip (t));
+    }
+    masterStrip->setLevels (engine.takeMasterPeakLeft(), engine.takeMasterPeakRight(), engine.takeMasterClip());
 
     if (timerTicks % 15 == 7) // 2x por segundo, defasado do status do dispositivo
     {
         chromeCapture.poll();
         chromeStatusLabel.setText (chromeCapture.getStatusText(), juce::dontSendNotification);
-        chromeStatusLabel.setColour (juce::Label::textColourId, chromeCapture.hasProblem() ? juce::Colour (0xfff5a524)
-                                                                                           : juce::Colours::white.withAlpha (0.9f));
+        chromeStatusLabel.setColour (juce::Label::textColourId, chromeCapture.hasProblem() ? theme::warn : theme::text);
     }
 
     recorder.poll();
@@ -741,40 +713,81 @@ void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (background);
 
-    // Painéis atrás de cada seção, na largura da coluna.
+    // Marca (como a barra de título dos outros apps): ícone 26px + nome.
+    if (logo != nullptr)
+        logo->drawWithin (g, juce::Rectangle<float> (20.0f, 16.0f, 30.0f, 30.0f), juce::RectanglePlacement::centred, 1.0f);
+
+    // Painéis da família atrás de cada seção, na largura da coluna.
     const auto drawPanel = [&] (juce::Component& first, juce::Component& last, juce::Rectangle<int> column)
     {
-        auto r = first.getBounds().getUnion (last.getBounds()).expanded (12, 8).toFloat();
-        r.setLeft ((float) column.getX() - 12.0f);
-        r.setRight ((float) column.getRight() + 12.0f);
-        g.setColour (panel);
-        g.fillRoundedRectangle (r, 8.0f);
+        auto r = first.getBounds().getUnion (last.getBounds()).expanded (14, 12).toFloat();
+        r.setLeft ((float) column.getX() - 14.0f);
+        r.setRight ((float) column.getRight() + 14.0f);
+        theme::drawPanel (g, r);
     };
 
     drawPanel (deviceHeader, perfLabel, leftColumn);
     drawPanel (midiHeader, lastOtherLabel, leftColumn);
-    drawPanel (outputHeader, meterRight, leftColumn);
     drawPanel (transportHeader, folderLabel, rightColumn);
     drawPanel (chromeHeader, chromeTipLabel, rightColumn);
+    theme::drawPanel (g, mixerArea.expanded (14, 0).toFloat()); // mesmas bordas dos painéis de cima
+
+    // linha da barra de título
+    g.setColour (theme::border);
+    g.fillRect (0, 60, getWidth(), 1);
 }
 
 void MainComponent::resized()
 {
-    auto area = getLocalBounds().reduced (28, 16);
-    area.removeFromBottom (24); // barra de status
+    auto area = getLocalBounds();
+    statusLabel.setBounds (area.removeFromBottom (28).reduced (24, 4));
 
-    auto top = area.removeFromTop (40);
-    titleLabel.setBounds (top.removeFromLeft (150));
-    subtitleLabel.setBounds (top.removeFromLeft (320));
-    area.removeFromTop (8);
-
-    auto buttons = area.removeFromTop (30);
-    for (auto* b : { &audioButton, &openPluginButton, &choosePluginButton, &saveStateButton, &panicButton })
+    // ---- barra de título: marca à esquerda, ações à direita ----
     {
-        b->setBounds (buttons.removeFromLeft (b == &openPluginButton ? 170 : 130));
-        buttons.removeFromLeft (8);
+        auto top = area.removeFromTop (60).reduced (20, 15);
+        top.removeFromLeft (40); // ícone
+        titleLabel.setBounds (top.removeFromLeft (90));
+        subtitleLabel.setBounds (top.removeFromLeft (260));
+
+        for (auto* b : { &panicButton, &saveStateButton, &choosePluginButton, &openPluginButton, &audioButton })
+        {
+            b->setBounds (top.removeFromRight (b == &openPluginButton ? 160 : 118));
+            top.removeFromRight (8);
+        }
     }
+
+    area = area.reduced (24, 0);
     area.removeFromTop (22);
+
+    // ---- mixer embaixo, largura toda ----
+    mixerArea = area.removeFromBottom (318).withTrimmedBottom (6);
+    {
+        auto m = mixerArea.reduced (0, 12);
+        auto head = m.removeFromTop (18);
+        mixerHeader.setBounds (head.removeFromLeft (80));
+        mixerHint.setBounds (head);
+        m.removeFromTop (10);
+
+        constexpr int stripW = 150, gap = 10;
+        for (int t = 0; t < numTracks; ++t)
+        {
+            strips[t]->setBounds (m.removeFromLeft (stripW));
+            m.removeFromLeft (gap);
+        }
+        masterStrip->setBounds (m.removeFromLeft (stripW));
+        m.removeFromLeft (gap + 14);
+
+        // saída + compensação das entradas
+        auto side = m;
+        outputPairLabel.setBounds (side.removeFromTop (20));
+        outputCombo.setBounds (side.removeFromTop (28));
+        side.removeFromTop (18);
+        compensationLabel.setBounds (side.removeFromTop (20));
+        compensationSlider.setBounds (side.removeFromTop (28));
+        side.removeFromTop (4);
+        compensationInfo.setBounds (side.removeFromTop (54));
+    }
+    area.removeFromBottom (24);
 
     const int gap = 40;
     leftColumn = area.removeFromLeft ((area.getWidth() - gap) / 2);
@@ -784,15 +797,15 @@ void MainComponent::resized()
     // ================= coluna esquerda =================
     auto col = leftColumn;
 
-    // Áudio
     deviceHeader.setBounds (col.removeFromTop (18));
+    col.removeFromTop (4);
     deviceLabel.setBounds (col.removeFromTop (22));
     latencyLabel.setBounds (col.removeFromTop (22));
     perfLabel.setBounds (col.removeFromTop (20));
-    col.removeFromTop (26);
+    col.removeFromTop (34);
 
-    // Bateria (MIDI)
     midiHeader.setBounds (col.removeFromTop (18));
+    col.removeFromTop (6);
     {
         auto row = col.removeFromTop (28);
         midiInputLabel.setBounds (row.removeFromLeft (110));
@@ -814,35 +827,16 @@ void MainComponent::resized()
         row.removeFromRight (8);
         profileCombo.setBounds (row);
     }
-    col.removeFromTop (6);
-    lastNoteLabel.setBounds (col.removeFromTop (40));
-    lastNoteDetail.setBounds (col.removeFromTop (22));
-    lastOtherLabel.setBounds (col.removeFromTop (20));
-    col.removeFromTop (26);
-
-    // Saída da bateria
-    outputHeader.setBounds (col.removeFromTop (18));
-    {
-        auto row = col.removeFromTop (28);
-        outputPairLabel.setBounds (row.removeFromLeft (110));
-        outputCombo.setBounds (row);
-    }
-    col.removeFromTop (6);
-    {
-        auto row = col.removeFromTop (28);
-        gainLabel.setBounds (row.removeFromLeft (110));
-        gainSlider.setBounds (row);
-    }
-    col.removeFromTop (6);
-    meterLeft.setBounds (col.removeFromTop (8));
-    col.removeFromTop (3);
-    meterRight.setBounds (col.removeFromTop (8));
+    col.removeFromTop (8);
+    lastNoteLabel.setBounds (col.removeFromTop (36));
+    lastNoteDetail.setBounds (col.removeFromTop (20));
+    lastOtherLabel.setBounds (col.removeFromTop (18));
 
     // ================= coluna direita =================
     col = rightColumn;
 
-    // Gravação
     transportHeader.setBounds (col.removeFromTop (18));
+    col.removeFromTop (6);
     {
         auto row = col.removeFromTop (34);
         for (auto* b : { &recordButton, &playButton, &stopButton })
@@ -857,41 +851,207 @@ void MainComponent::resized()
     transportInfoLabel.setBounds (col.removeFromTop (22));
     col.removeFromTop (6);
     {
-        auto row = col.removeFromTop (26);
+        auto row = col.removeFromTop (28);
         openTakeButton.setBounds (row.removeFromRight (160));
         row.removeFromRight (8);
         chooseFolderButton.setBounds (row.removeFromRight (80));
         row.removeFromRight (8);
         folderLabel.setBounds (row);
     }
-    col.removeFromTop (26);
+    col.removeFromTop (34);
 
-    // Chrome (Songsterr)
     chromeHeader.setBounds (col.removeFromTop (18));
+    col.removeFromTop (6);
     {
         auto row = col.removeFromTop (26);
-        chromeToggle.setBounds (row.removeFromLeft (260));
+        chromeToggle.setBounds (row.removeFromLeft (250));
         row.removeFromLeft (8);
         chromeProcessLabel.setBounds (row.removeFromLeft (70));
         chromeProcessEditor.setBounds (row.removeFromLeft (140));
     }
+    col.removeFromTop (4);
     chromeStatusLabel.setBounds (col.removeFromTop (22));
-    col.removeFromTop (6);
-    {
-        auto row = col.removeFromTop (28);
-        chromeGainLabel.setBounds (row.removeFromLeft (70));
-        chromeMuteButton.setBounds (row.removeFromRight (80));
-        row.removeFromRight (8);
-        chromeGainSlider.setBounds (row);
-    }
-    col.removeFromTop (6);
-    chromeMeterLeft.setBounds (col.removeFromTop (8));
-    col.removeFromTop (3);
-    chromeMeterRight.setBounds (col.removeFromTop (8));
-    col.removeFromTop (8);
-    chromeTipLabel.setBounds (col.removeFromTop (54));
+    col.removeFromTop (4);
+    chromeTipLabel.setBounds (col.removeFromTop (50));
+}
 
-    statusLabel.setBounds (getLocalBounds().removeFromBottom (30).reduced (28, 4));
+// ---------------------------------------------------------------------------
+// Mixer e entradas (F5)
+// ---------------------------------------------------------------------------
+
+void MainComponent::setupMixer()
+{
+    const ChannelStrip::Config configs[numTracks] = {
+        { "Bateria", theme::trackDrums, true, true, false },
+        { "Chrome", theme::trackChrome, true, true, false },
+        { "Entrada 1", theme::trackInput1, false, true, true },
+        { "Entrada 2", theme::trackInput2, false, true, true },
+    };
+
+    for (int t = 0; t < numTracks; ++t)
+    {
+        strips[t] = std::make_unique<ChannelStrip> (configs[t]);
+        addAndMakeVisible (*strips[t]);
+        const juce::String key (trackKeys[t]);
+
+        strips[t]->onGain = [this, t] (double db) { engine.setTrackGain (t, dbToGain (db)); };
+        strips[t]->onGainCommitted = [this, t, key]
+        {
+            settings.set ("mixer", key + "Db", strips[t]->getGainDb());
+            settings.save();
+        };
+        strips[t]->onMute = [this, t, key] (bool on)
+        {
+            engine.setTrackMute (t, on);
+            settings.set ("mixer", key + "Mudo", on);
+            settings.save();
+        };
+        strips[t]->onSolo = [this, t, key] (bool on)
+        {
+            engine.setTrackSolo (t, on);
+            settings.set ("mixer", key + "Solo", on);
+            settings.save();
+        };
+
+        if (t >= trackInput1)
+        {
+            const int k = t - trackInput1;
+            strips[t]->onArm = [this, key] (bool on)
+            {
+                settings.set ("mixer", key + "Gravar", on);
+                settings.save();
+                if (on && recorder.getState() == Recorder::State::recording)
+                    setStatus (L"A entrada armada entra na próxima gravação.");
+            };
+            strips[t]->onMonitor = [this, k, key] (bool on)
+            {
+                engine.setInputMonitor (k, on);
+                settings.set ("mixer", key + "Ouvir", on);
+                settings.save();
+            };
+        }
+    }
+
+    strips[trackDrums]->setCaption ("SSD5");
+    strips[trackChrome]->setCaption ("Songsterr");
+
+    masterStrip = std::make_unique<ChannelStrip> (ChannelStrip::Config { "Master", theme::accent, true, false, false });
+    masterStrip->setCaption ("Behringer");
+    addAndMakeVisible (*masterStrip);
+    masterStrip->onGain = [this] (double db) { engine.setMasterGain (dbToGain (db)); };
+    masterStrip->onGainCommitted = [this]
+    {
+        settings.set ("mixer", "masterDb", masterStrip->getGainDb());
+        settings.save();
+    };
+
+    compensationSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    compensationSlider.setRange (-50.0, 50.0, 0.5);
+    compensationSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 70, 22);
+    compensationSlider.setTextValueSuffix (" ms");
+    compensationSlider.setDoubleClickReturnValue (true, 0.0);
+    compensationSlider.setTooltip (L"Se a guitarra gravada ficar atrasada em relação à bateria, aumente; adiantada, diminua.");
+    compensationSlider.onValueChange = [this] { updateCompensationInfo(); };
+    compensationSlider.onDragEnd = [this]
+    {
+        settings.set ("entradas", "ajusteMs", compensationSlider.getValue());
+        settings.save();
+    };
+}
+
+void MainComponent::loadMixerSettings()
+{
+    // Valores das versões anteriores (F1–F4) viram o padrão do mixer.
+    const double legacyDb[numTracks] = {
+        (double) settings.get ("saida", "volumeBateriaDb", 0.0),
+        (double) settings.get ("chrome", "volumeDb", 0.0),
+        0.0, 0.0
+    };
+    const bool legacyMute[numTracks] = { false, (bool) settings.get ("chrome", "mudo", false), false, false };
+
+    for (int t = 0; t < numTracks; ++t)
+    {
+        const juce::String key (trackKeys[t]);
+        const double db = (double) settings.get ("mixer", key + "Db", legacyDb[t]);
+        const bool mute = (bool) settings.get ("mixer", key + "Mudo", legacyMute[t]);
+        const bool solo = (bool) settings.get ("mixer", key + "Solo", false);
+
+        strips[t]->setGainDb (db);
+        strips[t]->setMute (mute);
+        strips[t]->setSolo (solo);
+        engine.setTrackGain (t, dbToGain (db));
+        engine.setTrackMute (t, mute);
+        engine.setTrackSolo (t, solo);
+
+        if (t >= trackInput1)
+        {
+            const int k = t - trackInput1;
+            const bool arm = (bool) settings.get ("mixer", key + "Gravar", false);
+            const bool monitor = (bool) settings.get ("mixer", key + "Ouvir", false);
+            strips[t]->setArm (arm);
+            strips[t]->setMonitor (monitor);
+            engine.setInputMonitor (k, monitor);
+            engine.setInputChannel (k, k);
+        }
+    }
+
+    const double masterDb = (double) settings.get ("mixer", "masterDb", 0.0);
+    masterStrip->setGainDb (masterDb);
+    engine.setMasterGain (dbToGain (masterDb));
+
+    compensationSlider.setValue ((double) settings.get ("entradas", "ajusteMs", 0.0), juce::dontSendNotification);
+}
+
+void MainComponent::updateInputCaptions()
+{
+    auto* device = deviceManager.getCurrentAudioDevice();
+    juce::StringArray activeNames;
+
+    if (device != nullptr)
+    {
+        const auto names = device->getInputChannelNames();
+        const auto active = device->getActiveInputChannels();
+        for (int i = 0; i < names.size(); ++i)
+            if (active[i])
+                activeNames.add (names[i]);
+    }
+
+    for (int k = 0; k < numInputTracks; ++k)
+        strips[trackInput1 + k]->setCaption (k < activeNames.size() ? activeNames[k]
+                                                                    : juce::String (L"sem canal (ative em Áudio...)"));
+    updateCompensationInfo();
+}
+
+int MainComponent::inputCompensationSamples() const
+{
+    auto* device = deviceManager.getCurrentAudioDevice();
+    if (device == nullptr)
+        return 0;
+
+    const double sr = device->getCurrentSampleRate();
+    const int total = device->getInputLatencyInSamples() + device->getOutputLatencyInSamples()
+                    + juce::roundToInt (compensationSlider.getValue() * sr / 1000.0);
+    return juce::jmax (0, total);
+}
+
+void MainComponent::updateCompensationInfo()
+{
+    auto* device = deviceManager.getCurrentAudioDevice();
+    if (device == nullptr)
+    {
+        compensationInfo.setText ({}, juce::dontSendNotification);
+        return;
+    }
+
+    const double sr = device->getCurrentSampleRate();
+    juce::String text = L"Entradas gravadas adiantadas em\n";
+    text << "entrada " << ms (device->getInputLatencyInSamples(), sr)
+         << " + " << L"saída " << ms (device->getOutputLatencyInSamples(), sr);
+    if (std::abs (compensationSlider.getValue()) > 0.01)
+        text << (compensationSlider.getValue() > 0 ? juce::String (" + ") : juce::String (L" − "))
+             << juce::String (std::abs (compensationSlider.getValue()), 1).replaceCharacter ('.', ',') << " ms";
+    text << "\n= " << ms (inputCompensationSamples(), sr);
+    compensationInfo.setText (text, juce::dontSendNotification);
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,6 +1275,13 @@ void MainComponent::toggleRecord()
     meta.midiTiming = engine.getMidiTiming() == AudioEngine::MidiTiming::steady ? "estavel" : "rapido";
     meta.recordChrome = chromeCapture.isEnabled();
     meta.chromeProcess = chromeCapture.getExeName();
+    meta.inputCompensationSamples = inputCompensationSamples();
+    for (int k = 0; k < numInputTracks; ++k)
+    {
+        auto& strip = *strips[trackInput1 + k];
+        meta.recordInput[k] = strip.isArmed();
+        meta.inputName[k] = strip.getName();
+    }
     if (auto* p = engine.getPlugin())
     {
         meta.plugin = p->getName();
@@ -1168,9 +1335,9 @@ void MainComponent::updateTransportUi()
         return juce::String::formatted ("%02d:%02d.%d", tenths / 600, (tenths / 10) % 60, tenths % 10);
     };
 
-    const auto red = juce::Colour (0xffd8393f), green = juce::Colour (0xff2f9e63);
-    recordButton.setColour (juce::TextButton::buttonColourId, state == Recorder::State::recording ? red : panel.brighter (0.15f));
-    playButton.setColour (juce::TextButton::buttonColourId, state == Recorder::State::playing ? green : panel.brighter (0.15f));
+    const auto red = theme::danger, green = theme::ok;
+    recordButton.setToggleState (state == Recorder::State::recording, juce::dontSendNotification);
+    playButton.setToggleState (state == Recorder::State::playing, juce::dontSendNotification);
     recordButton.setEnabled (state == Recorder::State::idle || state == Recorder::State::recording);
     playButton.setEnabled ((state == Recorder::State::idle && take != nullptr) || state == Recorder::State::playing);
     stopButton.setEnabled (state == Recorder::State::recording || state == Recorder::State::playing);
@@ -1199,7 +1366,7 @@ void MainComponent::updateTransportUi()
             break;
 
         case Recorder::State::idle:
-            timeLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+            timeLabel.setColour (juce::Label::textColourId, theme::text);
             if (take != nullptr)
             {
                 timeLabel.setText (formatTime (take->durationSec), juce::dontSendNotification);

@@ -23,6 +23,27 @@ enum class TransportState
     playing
 };
 
+// Faixas do mixer (F5). Tudo sai pelo mesmo par de saídas da Behringer.
+enum TrackId
+{
+    trackDrums = 0,
+    trackChrome,
+    trackInput1,
+    trackInput2,
+    numTracks
+};
+constexpr int numInputTracks = 2;
+
+// O que gravar e onde (writers podem ser nulos). Pertencem a quem pediu até takeResourcesReleased().
+struct RecordTargets
+{
+    DiskWriter* drum = nullptr;
+    DiskWriter* chrome = nullptr;
+    DiskWriter* inputs[numInputTracks] {};
+    int pluginLatency = 0;      // descarta o começo da bateria/Chrome (latência do plugin)
+    int inputCompensation = 0;  // adianta as entradas: latência de entrada + saída (+ ajuste fino)
+};
+
 // Callback ASIO: recebe o MIDI da fila lock-free, roda o plugin de bateria e manda pra saída.
 //
 // Regras da thread de áudio (audioDeviceIOCallbackWithContext):
@@ -53,15 +74,25 @@ public:
     void setOutputPair (int firstChannel) noexcept { outputPair.store (juce::jmax (0, firstChannel)); }
     int getOutputPair() const noexcept             { return outputPair.load(); }
 
-    void setDrumGain (float g) noexcept { drumGain.store (g); }
-    float getDrumGain() const noexcept  { return drumGain.load(); }
+    // ---- Mixer (F5): só afeta o que você ouve; a gravação é sempre antes do fader ----
+    void setTrackGain (int track, float gain) noexcept { tracks[track].gain.store (gain); }
+    void setTrackMute (int track, bool m) noexcept     { tracks[track].mute.store (m); }
+    void setTrackSolo (int track, bool s) noexcept     { tracks[track].solo.store (s); }
+    void setInputMonitor (int input, bool on) noexcept { tracks[trackInput1 + input].monitor.store (on); }
+    void setInputChannel (int input, int ch) noexcept  { tracks[trackInput1 + input].channel.store (juce::jmax (0, ch)); }
+    void setMasterGain (float g) noexcept              { masterGain.store (g); }
+
+    // Medidores (pico desde a última leitura). Bateria/Chrome: depois do fader. Entradas: ANTES do fader
+    // (é o nível que vai para a gravação). Clip: pico >= 0 dBFS desde a última leitura.
+    float takeTrackPeak (int track) noexcept { return tracks[track].peak.exchange (0.0f); }
+    bool takeTrackClip (int track) noexcept  { return tracks[track].clip.exchange (false); }
+    float takeMasterPeakLeft() noexcept      { return masterPeakL.exchange (0.0f); }
+    float takeMasterPeakRight() noexcept     { return masterPeakR.exchange (0.0f); }
+    bool takeMasterClip() noexcept           { return masterClip.exchange (false); }
+    int getNumInputChannels() const noexcept { return numDeviceInputs.load(); }
 
     // Para todas as notas (CC123 em todos os canais).
     void panic();
-
-    // Medidores: pico desde a última leitura (a UI chama e zera).
-    float takePeakLeft() noexcept  { return peakLeft.exchange (0.0f); }
-    float takePeakRight() noexcept { return peakRight.exchange (0.0f); }
 
     std::uint32_t getDroppedMidiCount() const noexcept { return droppedMidi.load(); }
     std::uint32_t getSkippedBlockCount() const noexcept { return skippedBlocks.load(); }
@@ -93,8 +124,9 @@ public:
     //
     // Os recursos (writer, eventos) pertencem a quem chamou e só podem ser liberados depois que
     // takeResourcesReleased() devolver true.
-    // `chromeWriter` pode ser nulo (Chrome desligado): grava o que saiu do resampler, já no relógio do ASIO.
-    bool requestRecord (DiskWriter* drumWriter, DiskWriter* chromeWriter, int skipAudioSamples) noexcept;
+    // Chrome: grava o que saiu do resampler, já no relógio do ASIO. Entradas: gravadas adiantadas em
+    // `inputCompensation` amostras (o restante do fim é completado com silêncio por quem gravou).
+    bool requestRecord (const RecordTargets& targets) noexcept;
     bool requestPlay (const TimedMidi* events, int numEvents) noexcept;
     void requestStop() noexcept;
 
@@ -109,10 +141,6 @@ public:
     // Troca o fluxo capturado (nulo = desligado). Thread de mensagens; ao voltar, a thread de áudio
     // garantidamente não usa mais o fluxo anterior, que pode então ser destruído.
     void setChromeStream (LoopbackStream* stream) noexcept;
-    void setChromeGain (float g) noexcept   { chromeGain.store (g); }
-    void setChromeMuted (bool m) noexcept   { chromeMuted.store (m); }
-    float takeChromePeakLeft() noexcept     { return chromePeakL.exchange (0.0f); }
-    float takeChromePeakRight() noexcept    { return chromePeakR.exchange (0.0f); }
     const DriftResampler& getChromeResampler() const noexcept { return chromeResampler; }
 
     // ---- AudioIODeviceCallback ----
@@ -126,7 +154,11 @@ private:
     void preparePlugin (juce::AudioPluginInstance& p, double sr, int bs);
     void allocateBuffers (int bs);
     void collectMidi (int numSamples, double blockStartSec);
-    void renderChunk (float* const* outputs, int numOutputs, int startSample, int numSamples);
+    void renderChunk (int startSample, int numSamples);
+    void computeTrackGains() noexcept;
+    void processInputs (const float* const* inputs, int numInputs, int numSamples) noexcept;
+    void processMaster (float* const* outputs, int numOutputs, int numSamples) noexcept;
+    static void storePeak (std::atomic<float>& target, float value) noexcept;
 
     // Transporte (thread de áudio)
     void applyTransportRequest();
@@ -135,7 +167,7 @@ private:
     void recordDrumSilence (int numSamples) noexcept;
     void captureRecordedMidi (int chunkStart);
     void endTransport (bool sendNotesOff);
-    void processChrome (float* const* outputs, int numOutputs, int numSamples) noexcept;
+    void processChrome (int numSamples) noexcept;
 
     juce::SpinLock pluginLock;
     std::unique_ptr<juce::AudioPluginInstance> plugin;
@@ -153,10 +185,24 @@ private:
 
     std::atomic<int> midiTiming { (int) MidiTiming::lowestLatency };
     std::atomic<int> outputPair { 0 };
-    std::atomic<float> drumGain { 1.0f };
-
-    std::atomic<float> peakLeft { 0.0f }, peakRight { 0.0f };
     std::atomic<std::uint32_t> droppedMidi { 0 }, skippedBlocks { 0 };
+
+    // ---- mixer ----
+    struct TrackControl
+    {
+        std::atomic<float> gain { 1.0f };
+        std::atomic<bool> mute { false }, solo { false }, monitor { false };
+        std::atomic<int> channel { 0 };       // entradas: índice entre os canais de entrada ativos
+        std::atomic<float> peak { 0.0f };
+        std::atomic<bool> clip { false };
+    };
+    TrackControl tracks[numTracks];
+    std::atomic<float> masterGain { 1.0f };
+    std::atomic<float> masterPeakL { 0.0f }, masterPeakR { 0.0f };
+    std::atomic<bool> masterClip { false };
+    std::atomic<int> numDeviceInputs { 0 };
+    float blockGains[numTracks] {};          // só a thread de áudio (calculado no começo do bloco)
+    juce::AudioBuffer<float> mixBus;         // soma de todas as faixas antes do master
 
     // ---- transporte ----
     enum Request { reqNone = 0, reqRecord, reqPlay, reqStop };
@@ -166,9 +212,7 @@ private:
     std::atomic<std::uint64_t> transportPosition { 0 };
 
     // Preenchidos pela thread de mensagens ANTES de publicar o pedido (release/acquire em pendingRequest).
-    DiskWriter* requestedWriter = nullptr;
-    DiskWriter* requestedChromeWriter = nullptr;
-    int requestedSkip = 0;
+    RecordTargets requestedTargets;
     const TimedMidi* requestedEvents = nullptr;
     int requestedNumEvents = 0;
 
@@ -177,17 +221,16 @@ private:
     std::uint64_t transportStart = 0;     // sampleCounter no início da gravação/reprodução
     DiskWriter* activeWriter = nullptr;
     DiskWriter* activeChromeWriter = nullptr;
+    DiskWriter* activeInputWriters[numInputTracks] {};
     int audioSkipRemaining = 0;
     int chromeSkipRemaining = 0;   // mesma compensação da bateria: as duas faixas alinhadas "como ouvido"
+    int inputSkipRemaining[numInputTracks] {};
 
     // ---- Chrome ----
     std::atomic<LoopbackStream*> chromeStream { nullptr };
     std::atomic<bool> chromeInUse { false };
     DriftResampler chromeResampler;
     juce::AudioBuffer<float> chromeBuffer;
-    std::atomic<float> chromeGain { 1.0f };
-    std::atomic<bool> chromeMuted { false };
-    std::atomic<float> chromePeakL { 0.0f }, chromePeakR { 0.0f };
     const TimedMidi* playEvents = nullptr;
     int playNumEvents = 0, playIndex = 0;
     bool notesOffRequested = false;

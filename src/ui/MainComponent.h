@@ -10,6 +10,7 @@
 #include "mapping/ProfileManager.h"
 #include "rec/Recorder.h"
 #include "capture/ChromeCapture.h"
+#include "ui/ChannelStrip.h"
 #include "ui/LevelMeter.h"
 #include "ui/MappingWindow.h"
 #include "ui/PluginWindow.h"
@@ -53,6 +54,13 @@ private:
     void stopTransport();
     void updateTransportUi();
     void applyChromeSettings();
+
+    // Mixer e entradas (F5)
+    void setupMixer();
+    void loadMixerSettings();
+    void updateInputCaptions();
+    void updateCompensationInfo();
+    int inputCompensationSamples() const;
     void chooseRecordingsFolder();
     juce::File recordingsDirectory() const;
 
@@ -116,16 +124,17 @@ private:
     juce::TextButton recordButton { L"● Gravar" }, playButton { L"▶ Tocar" }, stopButton { L"■ Parar" },
                      chooseFolderButton { "Pasta..." }, openTakeButton { L"Abrir pasta do take" };
 
-    juce::Label chromeHeader, chromeStatusLabel, chromeGainLabel, chromeTipLabel, chromeProcessLabel;
-    juce::ToggleButton chromeToggle { L"Capturar o áudio do Chrome" }, chromeMuteButton { "Mudo" };
+    juce::Label chromeHeader, chromeStatusLabel, chromeTipLabel, chromeProcessLabel;
+    juce::ToggleButton chromeToggle { L"Capturar o áudio do Chrome" };
     juce::TextEditor chromeProcessEditor;
-    juce::Slider chromeGainSlider;
-    LevelMeter chromeMeterLeft, chromeMeterRight;
-    juce::Rectangle<int> leftColumn, rightColumn;
-    juce::Label outputHeader, outputPairLabel, gainLabel;
+    juce::Rectangle<int> leftColumn, rightColumn, mixerArea;
+
+    juce::Label mixerHeader, outputPairLabel, compensationLabel, compensationInfo, mixerHint;
     juce::ComboBox outputCombo;
-    juce::Slider gainSlider;
-    LevelMeter meterLeft, meterRight;
+    juce::Slider compensationSlider;
+    std::unique_ptr<ChannelStrip> strips[numTracks];
+    std::unique_ptr<ChannelStrip> masterStrip;
+    std::unique_ptr<juce::Drawable> logo;
     juce::Label statusLabel;
 
     juce::Array<juce::MidiDeviceInfo> midiDevices;

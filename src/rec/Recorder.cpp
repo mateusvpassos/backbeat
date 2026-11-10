@@ -25,6 +25,19 @@ Recorder::~Recorder()
         drumWriter->finish();
     if (chromeWriter != nullptr)
         chromeWriter->finish();
+    for (auto& w : inputWriters)
+        if (w != nullptr)
+            w->finish();
+}
+
+void Recorder::finishAllWriters()
+{
+    for (auto* w : { &drumWriter, &chromeWriter, &inputWriters[0], &inputWriters[1] })
+        if (*w != nullptr)
+        {
+            (*w)->finish();
+            w->reset();
+        }
 }
 
 juce::File Recorder::defaultRecordingsDirectory()
@@ -87,8 +100,21 @@ bool Recorder::startRecording (const juce::File& recordingsDir, const Metadata& 
         chromeWriter = DiskWriter::createWav (folder.getChildFile ("chrome.wav"), sr, 2, 24, 10.0, error);
         if (chromeWriter == nullptr)
         {
-            drumWriter->finish();
-            drumWriter.reset();
+            finishAllWriters();
+            return false;
+        }
+    }
+
+    for (int k = 0; k < numInputTracks; ++k)
+    {
+        if (! meta.recordInput[k])
+            continue;
+
+        inputWriters[k] = DiskWriter::createWav (folder.getChildFile ("entrada-" + juce::String (k + 1) + ".wav"),
+                                                 sr, 1, 24, 10.0, error);
+        if (inputWriters[k] == nullptr)
+        {
+            finishAllWriters();
             return false;
         }
     }
@@ -103,15 +129,17 @@ bool Recorder::startRecording (const juce::File& recordingsDir, const Metadata& 
     currentMeta = meta;
     recordSampleRate = sr;
 
-    if (! engine.requestRecord (drumWriter.get(), chromeWriter.get(), meta.pluginLatencySamples))
+    RecordTargets targets;
+    targets.drum = drumWriter.get();
+    targets.chrome = chromeWriter.get();
+    for (int k = 0; k < numInputTracks; ++k)
+        targets.inputs[k] = inputWriters[k].get();
+    targets.pluginLatency = meta.pluginLatencySamples;
+    targets.inputCompensation = meta.inputCompensationSamples;
+
+    if (! engine.requestRecord (targets))
     {
-        drumWriter->finish();
-        drumWriter.reset();
-        if (chromeWriter != nullptr)
-        {
-            chromeWriter->finish();
-            chromeWriter.reset();
-        }
+        finishAllWriters();
         folder.deleteRecursively();
         error = L"O transporte está ocupado.";
         return false;
@@ -155,6 +183,21 @@ void Recorder::finishRecording()
         chromeWriter.reset();
     }
     const auto chromeGaps = engine.getChromeResampler().getUnderruns() - chromeUnderrunsAtStart;
+
+    // Entradas: foram gravadas adiantadas; completa o fim com o mesmo tanto de silêncio para terem o
+    // mesmo tamanho da bateria. A thread de áudio já largou os writers: aqui a escrita é só desta thread.
+    bool hadInput[numInputTracks] {};
+    for (int k = 0; k < numInputTracks; ++k)
+    {
+        if (inputWriters[k] == nullptr)
+            continue;
+        hadInput[k] = true;
+        for (int left = currentMeta.inputCompensationSamples; left > 0; left -= 4096)
+            inputWriters[k]->writeSilence (juce::jmin (4096, left));
+        inputWriters[k]->finish();
+        droppedAudio += inputWriters[k]->getDroppedSamples();
+        inputWriters[k].reset();
+    }
 
     auto take = std::make_unique<Take>();
     take->folder = currentFolder;
@@ -219,6 +262,20 @@ void Recorder::finishRecording()
         t->setProperty ("diferencaDeRelogioPpm", engine.getChromeResampler().getRatioPpm());
         t->setProperty ("atrasoDoBufferMs", engine.getChromeResampler().getTargetMs());
         t->setProperty ("faltasDeAudio", (int) chromeGaps);
+        tracks.add (juce::var (t));
+    }
+    for (int k = 0; k < numInputTracks; ++k)
+    {
+        if (! hadInput[k])
+            continue;
+        auto* t = new juce::DynamicObject();
+        t->setProperty ("tipo", "audio");
+        t->setProperty ("nome", currentMeta.inputName[k].isNotEmpty() ? currentMeta.inputName[k] : "Entrada " + juce::String (k + 1));
+        t->setProperty ("arquivo", "entrada-" + juce::String (k + 1) + ".wav");
+        t->setProperty ("canais", 1);
+        t->setProperty ("bits", 24);
+        t->setProperty ("compensacaoDeLatenciaAmostras", currentMeta.inputCompensationSamples);
+        t->setProperty ("compensacaoDeLatenciaMs", currentMeta.inputCompensationSamples * 1000.0 / recordSampleRate);
         tracks.add (juce::var (t));
     }
     root->setProperty ("faixas", tracks);

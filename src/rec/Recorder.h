@@ -29,6 +29,11 @@ public:
         int pluginLatencySamples = 0;
         bool recordChrome = false;     // gravar também o chrome.wav (captura ligada)
         juce::String chromeProcess;
+
+        // Entradas da Behringer (F5): armadas para gravar, nome e compensação de latência.
+        bool recordInput[numInputTracks] {};
+        juce::String inputName[numInputTracks];
+        int inputCompensationSamples = 0;   // entrada + saída (+ ajuste fino), em amostras
     };
 
     struct Take
@@ -76,6 +81,8 @@ private:
 
     // Gravação em andamento
     std::unique_ptr<DiskWriter> drumWriter, chromeWriter;
+    std::unique_ptr<DiskWriter> inputWriters[numInputTracks];
+    void finishAllWriters();
     std::uint32_t chromeUnderrunsAtStart = 0;
     juce::File currentFolder;
     Metadata currentMeta;

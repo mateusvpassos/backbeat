@@ -106,6 +106,15 @@ namespace
         std::vector<std::int64_t> pending; // só no teste: alocar aqui não importa
     };
 
+    RecordTargets targetsFor (DiskWriter* drum, DiskWriter* chrome, int pluginLatency)
+    {
+        RecordTargets t;
+        t.drum = drum;
+        t.chrome = chrome;
+        t.pluginLatency = pluginLatency;
+        return t;
+    }
+
     MidiEvent noteOn (int note)
     {
         MidiEvent e;
@@ -130,10 +139,13 @@ namespace
         ~Harness() { engine.audioDeviceStopped(); }
 
         // Roda um bloco; devolve as posições (no bloco) onde a saída teve impulso.
-        std::vector<int> runBlock()
+        // `input` (opcional): canal de entrada 1 da "Behringer" neste bloco.
+        std::vector<int> runBlock (const float* input = nullptr)
         {
             out.clear();
-            engine.audioDeviceIOCallbackWithContext (nullptr, 0, out.getArrayOfWritePointers(), 2, testBlock, {});
+            const float* inputs[] = { input };
+            engine.audioDeviceIOCallbackWithContext (input != nullptr ? inputs : nullptr, input != nullptr ? 1 : 0,
+                                                     out.getArrayOfWritePointers(), 2, testBlock, {});
             std::vector<int> hits;
             for (int i = 0; i < testBlock; ++i)
                 if (out.getSample (0, i) > 0.5f)
@@ -186,7 +198,7 @@ public:
                 return;
 
             h.runBlock(); // bloco antes de gravar
-            expect (h.engine.requestRecord (writer.get(), nullptr, latency));
+            expect (h.engine.requestRecord (targetsFor (writer.get(), nullptr, latency)));
 
             // Notas chegam antes dos blocos 0, 3, 3 (duas no mesmo bloco) e 10 da gravação.
             const std::vector<int> notesBeforeBlock { 0, 3, 3, 10 };
@@ -234,7 +246,7 @@ public:
             const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("backbeat-silencio.wav");
             juce::String error;
             auto writer = DiskWriter::createWav (file, testRate, 2, 24, 2.0, error);
-            expect (h.engine.requestRecord (writer.get(), nullptr, 0));
+            expect (h.engine.requestRecord (targetsFor (writer.get(), nullptr, 0)));
             h.runBlock();
             h.engine.setPlugin (nullptr);   // simula troca de plugin no meio da gravação
             h.runBlock();
@@ -266,7 +278,7 @@ public:
 
             for (int i = 0; i < 10; ++i) { feed(); h.runBlock(); }   // Chrome já tocando antes de gravar
 
-            expect (h.engine.requestRecord (drum.get(), chrome.get(), 0));
+            expect (h.engine.requestRecord (targetsFor (drum.get(), chrome.get(), 0)));
             for (int i = 0; i < 40; ++i) { feed(); h.runBlock(); }
             h.engine.requestStop();
             feed();
@@ -301,7 +313,7 @@ public:
             juce::String error;
             const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("backbeat-cancelado.wav");
             auto writer = DiskWriter::createWav (file, testRate, 2, 24, 2.0, error);
-            expect (h.engine.requestRecord (writer.get(), nullptr, 0));
+            expect (h.engine.requestRecord (targetsFor (writer.get(), nullptr, 0)));
             h.engine.requestStop(); // antes de qualquer bloco
             expect (h.engine.takeResourcesReleased(), "pedido cancelado libera os recursos na hora");
             h.runBlock();
@@ -434,7 +446,132 @@ public:
     }
 };
 
+// ---------------------------------------------------------------------------
+// F5: mixer e entradas da Behringer
+// ---------------------------------------------------------------------------
+
+class MixerTest final : public juce::UnitTest
+{
+public:
+    MixerTest() : juce::UnitTest ("Mixer e entradas", "engine") {}
+
+    void runTest() override
+    {
+        beginTest ("mudo, solo, master e monitor da entrada");
+        {
+            Harness h (0);
+            LoopbackStream stream ((int) testRate);
+            h.engine.setChromeStream (&stream);
+
+            std::vector<float> chromeTone ((size_t) testBlock * 2, 0.5f);
+            std::vector<float> guitar ((size_t) testBlock, 0.2f);
+            const auto block = [&] (bool withInput)
+            {
+                stream.pushInterleaved (chromeTone.data(), testBlock, 2);
+                h.runBlock (withInput ? guitar.data() : nullptr);
+                return h.out.getSample (0, testBlock / 2); // saída esquerda no meio do bloco
+            };
+
+            for (int i = 0; i < 12; ++i)
+                block (false);                                   // resampler do Chrome enche e começa
+
+            expectWithinAbsoluteError (block (false), 0.5f, 0.01f);       // Chrome sozinho
+
+            h.engine.setTrackMute (trackChrome, true);
+            expectWithinAbsoluteError (block (false), 0.0f, 0.001f);      // mudo
+            h.engine.setTrackMute (trackChrome, false);
+
+            h.engine.setTrackSolo (trackInput1, true);
+            expectWithinAbsoluteError (block (false), 0.0f, 0.001f);      // solo em outra faixa cala o Chrome
+            h.engine.setTrackSolo (trackChrome, true);
+            expectWithinAbsoluteError (block (false), 0.5f, 0.01f);       // as duas em solo
+            h.engine.setTrackSolo (trackInput1, false);
+            h.engine.setTrackSolo (trackChrome, false);
+
+            h.engine.setMasterGain (0.5f);
+            expectWithinAbsoluteError (block (false), 0.25f, 0.01f);      // master
+            h.engine.setMasterGain (1.0f);
+
+            // Entrada sem "Ouvir": não aparece na saída, mas o VU (antes do fader) mede.
+            h.engine.takeTrackPeak (trackInput1);
+            h.engine.setTrackGain (trackInput1, 0.0f);
+            expectWithinAbsoluteError (block (true), 0.5f, 0.01f);
+            expectWithinAbsoluteError (h.engine.takeTrackPeak (trackInput1), 0.2f, 0.001f);
+
+            h.engine.setTrackGain (trackInput1, 1.0f);
+            h.engine.setInputMonitor (0, true);
+            expectWithinAbsoluteError (block (true), 0.7f, 0.01f);        // Chrome + guitarra
+
+            h.engine.setChromeStream (nullptr);
+        }
+
+        beginTest (L"entrada gravada adiantada pela latência e com o tamanho da bateria");
+        {
+            Harness h (0);
+            const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory);
+            const auto drumFile = dir.getChildFile ("backbeat-f5-bateria.wav");
+            const auto inFile = dir.getChildFile ("backbeat-f5-entrada.wav");
+            juce::String error;
+            auto drum = DiskWriter::createWav (drumFile, testRate, 2, 24, 2.0, error);
+            auto input = DiskWriter::createWav (inFile, testRate, 1, 24, 2.0, error);
+
+            constexpr int compensation = 500;     // ex.: 6,8 ms de entrada + 4,5 ms de saída
+            constexpr int hitAt = 3000;           // posição (desde o início da gravação) em que a guitarra chega
+
+            RecordTargets t;
+            t.drum = drum.get();
+            t.inputs[0] = input.get();
+            t.inputCompensation = compensation;
+            expect (h.engine.requestRecord (t));
+
+            std::vector<float> in ((size_t) testBlock);
+            constexpr int blocks = 30;
+            for (int b = 0; b < blocks; ++b)
+            {
+                std::fill (in.begin(), in.end(), 0.0f);
+                if (hitAt / testBlock == b)
+                    in[(size_t) (hitAt % testBlock)] = 0.9f;
+                h.runBlock (in.data());
+            }
+
+            h.engine.requestStop();
+            h.runBlock (in.data());
+            expect (h.engine.takeResourcesReleased());
+
+            input->writeSilence (compensation);   // o Recorder completa o fim assim
+            drum->finish();
+            input->finish();
+
+            int drumTotal = 0, inTotal = 0;
+            impulsesInWav (drumFile, drumTotal);
+
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatReader> reader (wav.createReaderFor (new juce::FileInputStream (inFile), true));
+            expect (reader != nullptr);
+            if (reader != nullptr)
+            {
+                inTotal = (int) reader->lengthInSamples;
+                juce::AudioBuffer<float> data (1, inTotal);
+                reader->read (&data, 0, inTotal, 0, true, false);
+                int found = -1;
+                for (int i = 0; i < inTotal; ++i)
+                    if (data.getSample (0, i) > 0.5f)
+                        found = i;
+                expectEquals (found, hitAt - compensation, L"a guitarra precisa cair adiantada pela latência");
+                expectEquals ((int) reader->numChannels, 1);
+            }
+            reader.reset();
+
+            expectEquals (inTotal, drumTotal, "entrada e bateria com o mesmo tamanho");
+            expectEquals (drumTotal, blocks * testBlock);
+            drumFile.deleteFile();
+            inFile.deleteFile();
+        }
+    }
+};
+
 static RecordingSyncTest recordingSyncTest;
 static TakeFilesTest takeFilesTest;
+static MixerTest mixerTest;
 
 } // namespace bb
