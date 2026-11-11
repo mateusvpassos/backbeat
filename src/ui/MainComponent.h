@@ -86,6 +86,7 @@ private:
 
     // Persistência
     void saveDeviceState();
+    bool audioFallback = false; // ASIO ocupado na abertura: WASAPI provisório, não salvo
     void savePluginState();
 
     // Interface

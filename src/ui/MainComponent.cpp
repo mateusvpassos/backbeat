@@ -365,26 +365,23 @@ void MainComponent::openAudioDevice()
     // 2 entradas já reservadas para a F5 (mic/guitarra da Behringer); 2 saídas.
     const auto error = deviceManager.initialise (2, 2, saved.get(), saved == nullptr);
 
-    auto* device = deviceManager.getCurrentAudioDevice();
-    const bool isAsio = device != nullptr && device->getTypeName() == "ASIO";
-
-    if (saved == nullptr || error.isNotEmpty() || ! isAsio)
+    // Só procura um ASIO na primeira vez ou se o dispositivo salvo não abriu. Um dispositivo
+    // salvo que abriu (ASIO ou WASAPI, escolhido em Áudio...) é respeitado.
+    if (saved == nullptr || error.isNotEmpty() || deviceManager.getCurrentAudioDevice() == nullptr)
         applyPreferredAsioSetup();
 }
 
 void MainComponent::applyPreferredAsioSetup()
 {
-    deviceManager.setCurrentAudioDeviceType ("ASIO", true);
-
-    auto* type = deviceManager.getCurrentDeviceTypeObject();
-    if (type == nullptr || type->getTypeName() != "ASIO")
-    {
-        setStatus (L"ASIO não disponível. Escolha um dispositivo em Áudio...", true);
-        return;
-    }
-
-    type->scanForDevices();
-    const auto names = type->getDeviceNames (false);
+    // Procura os drivers ASIO antes de trocar de tipo: o tipo ASIO existe mesmo sem nenhum driver
+    // instalado, e trocar para ele fecharia o dispositivo que já abriu (WASAPI).
+    juce::StringArray names;
+    for (auto* t : deviceManager.getAvailableDeviceTypes())
+        if (t->getTypeName() == "ASIO")
+        {
+            t->scanForDevices();
+            names = t->getDeviceNames (false);
+        }
 
     juce::String chosen;
     for (const auto& n : names)
@@ -396,9 +393,19 @@ void MainComponent::applyPreferredAsioSetup()
 
     if (chosen.isEmpty())
     {
-        setStatus ("Nenhum driver ASIO encontrado.", true);
+        if (auto* device = deviceManager.getCurrentAudioDevice())
+            setStatus (L"Nenhum driver ASIO: usando " + device->getTypeName() + " (" + device->getName()
+                       + L"). Para menor atraso, instale o driver ASIO da sua interface.");
+        else
+            setStatus (L"Nenhum driver ASIO encontrado. Escolha um dispositivo em Áudio...", true);
         return;
     }
+
+    auto fallbackType = deviceManager.getCurrentAudioDeviceType();
+    if (fallbackType.isEmpty() || fallbackType == "ASIO")
+        fallbackType = "Windows Audio";
+
+    deviceManager.setCurrentAudioDeviceType ("ASIO", true);
 
     auto setup = deviceManager.getAudioDeviceSetup();
     setup.outputDeviceName = chosen;
@@ -409,15 +416,28 @@ void MainComponent::applyPreferredAsioSetup()
     setup.useDefaultOutputChannels = true;
 
     const auto error = deviceManager.setAudioDeviceSetup (setup, true);
-    if (error.isNotEmpty())
-        setStatus (L"Não abriu " + chosen + ": " + error
-                   + L" (o Voicemeeter ou outro programa está usando o ASIO?)", true);
-    else
+    if (error.isEmpty())
+    {
         saveDeviceState();
+        return;
+    }
+
+    // ASIO ocupado (Voicemeeter, DAW aberta...): volta para o WASAPI só nesta sessão. Não salva,
+    // para tentar o ASIO de novo na próxima vez que abrir.
+    audioFallback = true;
+    deviceManager.setCurrentAudioDeviceType (fallbackType, true);
+    const juce::String reason = L"Não abriu " + chosen + ": " + error + L" (outro programa está usando o ASIO?)";
+    if (auto* device = deviceManager.getCurrentAudioDevice())
+        setStatus (reason + L" Usando " + device->getName() + L" por enquanto.", true);
+    else
+        setStatus (reason, true);
 }
 
 void MainComponent::saveDeviceState()
 {
+    if (audioFallback)
+        return; // dispositivo provisório: não substitui o que o usuário escolheu
+
     if (auto xml = deviceManager.createStateXml())
     {
         settings.set ("audio", "dispositivo", xml->toString (juce::XmlElement::TextFormat().singleLine()));
@@ -427,6 +447,7 @@ void MainComponent::saveDeviceState()
 
 void MainComponent::showAudioSettings()
 {
+    audioFallback = false; // a partir daqui, o dispositivo é escolha do usuário e é salvo
     auto* selector = new juce::AudioDeviceSelectorComponent (deviceManager,
                                                              0, 8,   // entradas (min, max)
                                                              2, 8,   // saídas

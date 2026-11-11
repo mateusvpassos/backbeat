@@ -14,6 +14,10 @@ Mudanças de cada versão do Backbeat. Formato baseado em [Keep a Changelog](htt
 - `install.ps1` cria o atalho em `Área de Trabalho\Programs` em vez de solto na área de trabalho.
 - Interface sem nomes do equipamento do autor (Behringer, EDRUM, Songsterr); a primeira execução sem o SSD5 pede para escolher um VST3.
 
+### Corrigido
+- Um dispositivo escolhido em **Áudio...** (ex.: WASAPI) não volta mais para o ASIO toda vez que o app abre.
+- Sem driver ASIO, ou com o ASIO ocupado por outro programa, o app usa a saída do Windows em vez de ficar sem áudio. Com o ASIO ocupado, essa troca vale só para a sessão: na próxima abertura ele tenta o ASIO de novo.
+
 ## [1.0.0] - 2026-11-10
 
 Versão de uso pessoal, publicada como código aberto em 2026-11-11.
