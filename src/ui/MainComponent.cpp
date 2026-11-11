@@ -742,29 +742,102 @@ void MainComponent::updateCatalogForPlugin()
         mappingWindow->refresh();
 }
 
+juce::StringArray MainComponent::extraPluginFolders() const
+{
+    juce::StringArray folders;
+    if (const auto* list = settings.get ("plugin", "pastas").getArray())
+        for (const auto& entry : *list)
+            if (entry.toString().isNotEmpty())
+                folders.addIfNotAlreadyThere (entry.toString(), true);
+    return folders;
+}
+
+void MainComponent::setExtraPluginFolders (const juce::StringArray& folders)
+{
+    juce::Array<juce::var> list;
+    for (const auto& f : folders)
+        list.add (f);
+    settings.set ("plugin", "pastas", list);
+    settings.save();
+}
+
+void MainComponent::addPluginFolder()
+{
+    fileChooser = std::make_unique<juce::FileChooser> (L"Escolha uma pasta com plugins VST3",
+                                                       PluginHost::defaultVst3Folders()[0]);
+
+    juce::Component::SafePointer<MainComponent> safe (this);
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                              [safe] (const juce::FileChooser& fc)
+    {
+        const auto folder = fc.getResult();
+        if (safe == nullptr || ! folder.isDirectory())
+            return;
+
+        auto folders = safe->extraPluginFolders();
+        if (folders.contains (folder.getFullPathName(), true) || PluginHost::defaultVst3Folders().contains (folder))
+        {
+            safe->setStatus (L"Essa pasta já está na lista de VST3.");
+            return;
+        }
+        folders.add (folder.getFullPathName());
+        safe->setExtraPluginFolders (folders);
+
+        const auto found = PluginHost::findVst3In (folder).size();
+        safe->setStatus (L"Pasta adicionada: " + folder.getFullPathName() + " (" + juce::String (found)
+                             + (found == 1 ? " plugin)." : " plugins)."),
+                         found == 0);
+    });
+}
+
 void MainComponent::showPluginMenu()
 {
-    const auto installed = PluginHost::findInstalledVst3();
+    const auto extras = extraPluginFolders();
+    const auto installed = PluginHost::findInstalledVst3 (extras);
     constexpr int otherFileId = 100000;
+    constexpr int addFolderId = 100001;
+    constexpr int removeFolderBase = 200000;
 
     juce::PopupMenu menu;
     menu.addSectionHeader ("Plugins VST3 instalados");
     for (int i = 0; i < installed.size(); ++i)
         menu.addItem (i + 1, installed[i].getFileNameWithoutExtension(), true, installed[i] == pluginFile);
     if (installed.isEmpty())
-        menu.addItem (-1, L"Nenhum .vst3 em Common Files\\VST3", false, false);
+        menu.addItem (-1, L"Nenhum .vst3 nas pastas de VST3", false, false);
     menu.addSeparator();
     menu.addItem (otherFileId, "Outro arquivo...");
+    menu.addItem (addFolderId, L"Adicionar pasta de VST3...");
+    if (! extras.isEmpty())
+    {
+        juce::PopupMenu remove;
+        for (int i = 0; i < extras.size(); ++i)
+            remove.addItem (removeFolderBase + i, extras[i]);
+        menu.addSubMenu (L"Remover pasta", remove);
+    }
 
     juce::Component::SafePointer<MainComponent> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&choosePluginButton),
-                        [safe, installed] (int result)
+                        [safe, installed, extras] (int result)
     {
         if (safe == nullptr || result == 0)
             return;
         if (result == otherFileId)
         {
             safe->choosePluginFile();
+            return;
+        }
+        if (result == addFolderId)
+        {
+            safe->addPluginFolder();
+            return;
+        }
+        if (juce::isPositiveAndBelow (result - removeFolderBase, extras.size()))
+        {
+            auto folders = extras;
+            const auto removed = folders[result - removeFolderBase];
+            folders.remove (result - removeFolderBase);
+            safe->setExtraPluginFolders (folders);
+            safe->setStatus (L"Pasta removida da lista: " + removed);
             return;
         }
         if (! juce::isPositiveAndNotGreaterThan (result, installed.size()) || installed[result - 1] == safe->pluginFile)

@@ -5,6 +5,7 @@ Mudanças de cada versão do Backbeat. Formato baseado em [Keep a Changelog](htt
 ## [Não lançado]
 
 ### Adicionado
+- **Trocar plugin › Adicionar pasta de VST3...**: pastas extras (ex.: `D:\VST3`) entram na lista de plugins e ficam salvas; **Remover pasta** tira da lista.
 - Licença GNU AGPLv3, avisos de terceiros, guia de contribuição, política de segurança e modelos de issue.
 
 ### Alterado

@@ -93,7 +93,10 @@ private:
     void togglePluginWindow();
     void closePluginWindow();
     void choosePluginFile();
-    void showPluginMenu();                        // VST3 instalados + "Outro arquivo..."
+    void showPluginMenu();                        // VST3 instalados + "Outro arquivo..." + pastas extras
+    void addPluginFolder();
+    juce::StringArray extraPluginFolders() const; // settings "plugin.pastas"
+    void setExtraPluginFolders (const juce::StringArray& folders);
     juce::String storedStateFor (const juce::File& file) const;
     void storeStateFor (const juce::File& file, const juce::String& base64);
     void updatePluginLabels();                    // textos com o nome do plugin carregado

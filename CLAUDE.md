@@ -13,7 +13,7 @@ C++20 / JUCE 8.0.15 / CMake (gerador VS 2022 ou 2026, detectado pelo `build.ps1`
 ## Regras
 - **Thread de áudio** (`AudioEngine::audioDeviceIOCallbackWithContext` e tudo que ela chama): sem alocação, sem lock bloqueante (só `tryLock`), sem I/O, sem log. Comunicação por `SpscQueue` (um produtor, um consumidor) e atômicos.
 - Disco sempre em thread separada (`DiskWriter`).
-- O plugin só é trocado pela thread de mensagens via `AudioEngine::setPlugin`. A janela do plugin é destruída antes do plugin. Qualquer VST3: `PluginHost::findInstalledVst3` (em `PluginFiles.cpp`, sem abrir plugins; compila nos testes) e estado por plugin em `plugin.estados` (lista caminho/estado). SSD5 = catálogo do .ssd5kit; outros = `DrumCatalog::builtInGm`.
+- O plugin só é trocado pela thread de mensagens via `AudioEngine::setPlugin`. A janela do plugin é destruída antes do plugin. Qualquer VST3: `PluginHost::findInstalledVst3 (pastasExtras)` (em `PluginFiles.cpp`, sem abrir plugins; compila nos testes; pastas extras em `plugin.pastas`) e estado por plugin em `plugin.estados` (lista caminho/estado). SSD5 = catálogo do .ssd5kit; outros = `DrumCatalog::builtInGm`.
 - **Textos com acento:** `juce::String` trata `const char*` como ASCII (acento vira lixo). Use `L"..."` (o projeto compila com `/utf-8`) ou `juce::String::fromUTF8 ("...")`. Mensagens de `static_assert` sem acento.
 - Não usar `juce::String::indexOf/substring` em laço sobre textos grandes (UTF-8, acesso linear): converter para `std::string`.
 - Mapeamento: o perfil vira uma `MappingTable` (POD) publicada por `SeqLock` para a thread MIDI. Teclado do PC e botão "testar" entram por `AudioEngine::pushUiMidi` (fila separada; cada `SpscQueue` tem um produtor só).

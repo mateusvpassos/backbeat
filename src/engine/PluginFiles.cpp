@@ -38,13 +38,21 @@ juce::Array<juce::File> PluginHost::findVst3In (const juce::File& folder)
     return out;
 }
 
-juce::Array<juce::File> PluginHost::findInstalledVst3()
+juce::Array<juce::File> PluginHost::defaultVst3Folders()
 {
-    const juce::File folders[] = {
+    return {
         defaultDrumPluginFile().getParentDirectory(), // C:\Program Files\Common Files\VST3
         juce::File::getSpecialLocation (juce::File::windowsLocalAppData)
             .getChildFile ("Programs").getChildFile ("Common").getChildFile ("VST3"),
     };
+}
+
+juce::Array<juce::File> PluginHost::findInstalledVst3 (const juce::StringArray& extraFolders)
+{
+    auto folders = defaultVst3Folders();
+    for (const auto& path : extraFolders)
+        if (juce::File::isAbsolutePath (path))
+            folders.addIfNotAlreadyThere (juce::File (path));
 
     juce::Array<juce::File> all;
     for (const auto& folder : folders)

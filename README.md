@@ -15,7 +15,7 @@ C++20 / JUCE 8 / CMake. Interface em português do Brasil.
 
 ## Recursos
 
-- **Plugin de bateria:** **Trocar plugin** lista os .vst3 instalados (`Common Files\VST3` e a pasta VST3 do usuário) ou abre outro arquivo. Cada plugin guarda o seu estado (kit, mixer interno). Mostra latência, CPU, falhas e VU.
+- **Plugin de bateria:** **Trocar plugin** lista os .vst3 instalados (`Common Files\VST3`, a pasta VST3 do usuário e as pastas que você adicionar em **Adicionar pasta de VST3...**) ou abre outro arquivo. Cada plugin guarda o seu estado (kit, mixer interno). Mostra latência, CPU, falhas e VU.
 - **Mapeamento** (janela **Mapeamento...**):
   - **Pads:** bata num pad e escolha a peça. Com o SSD5 a lista vem do próprio kit `.ssd5kit`; com outro plugin, da tabela General MIDI. Curva de força, força mínima e pedal do chimbal (CC, inverter, faixa, calibração).
   - **Teclado:** teclas do PC tocam peças ou disparam comandos (Gravar, Tocar, Parar, Pânico, Metrônomo). Comandos podem ser **globais** e funcionar com o navegador na frente.
@@ -76,7 +76,7 @@ Atalhos em `Área de Trabalho\Programs\` e no menu Iniciar. Não precisa de admi
 ## Dados e privacidade
 
 O Backbeat funciona offline: não tem conta, não acessa a rede e não coleta dados de uso. Tudo fica em `%APPDATA%\Backbeat\`:
-- `settings.json`: dispositivo de áudio, plugin atual e o estado de cada plugin usado, entrada MIDI, mixer, entradas e metrônomo;
+- `settings.json`: dispositivo de áudio, plugin atual, pastas extras de VST3 e o estado de cada plugin usado, entrada MIDI, mixer, entradas e metrônomo;
 - `perfis\*.json`: perfis de mapeamento (pads, força, chimbal, teclas);
 - `backbeat.log`: tempos de inicialização e erros de dispositivo/plugin.
 

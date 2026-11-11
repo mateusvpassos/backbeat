@@ -283,6 +283,20 @@ public:
             root.deleteRecursively();
         }
 
+        beginTest ("pastas extras entram na lista, sem repetir e ignorando caminho relativo ou inexistente");
+        {
+            const auto extra = juce::File::createTempFile ("vst3extra");
+            extra.getChildFile ("ZzzBackbeatTeste.vst3").createDirectory();
+
+            const auto without = PluginHost::findInstalledVst3();
+            const auto with = PluginHost::findInstalledVst3 ({ extra.getFullPathName(), extra.getFullPathName(),
+                                                               "relativa\\VST3", extra.getChildFile ("nao-existe").getFullPathName() });
+            expectEquals (with.size(), without.size() + 1);
+            expect (with.contains (extra.getChildFile ("ZzzBackbeatTeste.vst3")));
+            expect (! without.contains (extra.getChildFile ("ZzzBackbeatTeste.vst3")));
+            extra.deleteRecursively();
+        }
+
         beginTest ("reconhece o SSD5");
         expect (PluginHost::isSsd5 (juce::File ("C:\\x\\SSDSampler5.vst3")));
         expect (! PluginHost::isSsd5 (juce::File ("C:\\x\\MT-PowerDrumKit.vst3")));
