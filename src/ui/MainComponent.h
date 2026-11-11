@@ -117,7 +117,7 @@ private:
     PluginHost pluginHost;
     std::unique_ptr<PluginWindow> pluginWindow;
     juce::File pluginFile;
-    juce::String pluginName { "SSD5" };
+    juce::String pluginName { "sem plugin" };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     DrumCatalog catalog = DrumCatalog::builtInSsd5();
@@ -130,7 +130,7 @@ private:
 
     // ---- interface ----
     juce::Label titleLabel, subtitleLabel;
-    juce::TextButton audioButton { L"Áudio..." }, openPluginButton { "Abrir SSD5" },
+    juce::TextButton audioButton { L"Áudio..." }, openPluginButton { "Abrir plugin" },
                      choosePluginButton { "Trocar plugin" }, saveStateButton { "Salvar estado" },
                      panicButton { L"Pânico" }, refreshMidiButton { "Atualizar" };
 

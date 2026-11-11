@@ -1,0 +1,38 @@
+name: Problema
+description: Algo não funciona como deveria
+labels: [bug]
+body:
+  - type: textarea
+    id: oque
+    attributes:
+      label: O que aconteceu?
+      description: E o que você esperava que acontecesse.
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como reproduzir
+      placeholder: |
+        1. Liguei a captura do Chrome com o SSD5 carregado
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do Backbeat
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Versão do Windows
+      placeholder: "Windows 11 24H2"
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Trecho de %APPDATA%\Backbeat\backbeat.log, se houver erro. Inclua também a interface de áudio e o plugin usados.
+      render: text

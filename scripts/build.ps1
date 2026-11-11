@@ -13,17 +13,25 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $config = if ($Debug) { 'Debug' } else { 'Release' }
 
-$cmake = (Get-Command cmake -ErrorAction SilentlyContinue).Source
-if (-not $cmake) {
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    $cmake = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+if (-not (Test-Path $vswhere)) { throw "Visual Studio não encontrado. Instale 'Desenvolvimento para desktop com C++' no Visual Studio 2022/2026 ou no Build Tools." }
+$vsArgs = @('-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64')
+$vs = & $vswhere @vsArgs -property installationPath
+$vsMajor = "$(& $vswhere @vsArgs -property installationVersion)".Split('.')[0]
+$generator = switch ($vsMajor) {
+    '18' { 'Visual Studio 18 2026' }
+    '17' { 'Visual Studio 17 2022' }
+    default { throw "Visual Studio com C++ não encontrado (versão: '$vsMajor'). Use o 2022 ou o 2026." }
 }
-if (-not (Test-Path $cmake)) { throw "CMake não encontrado. Instale 'Desenvolvimento para desktop com C++' no Visual Studio Build Tools." }
+
+# CMake do próprio Visual Studio (conhece o gerador dele); senão o do PATH.
+$cmake = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+if (-not (Test-Path $cmake)) { $cmake = (Get-Command cmake -ErrorAction SilentlyContinue).Source }
+if (-not $cmake) { throw "CMake não encontrado. Instale 'Desenvolvimento para desktop com C++' no Visual Studio." }
 
 $build = Join-Path $root 'build'
 if (-not (Test-Path (Join-Path $build 'CMakeCache.txt'))) {
-    & $cmake -S $root -B $build -G 'Visual Studio 18 2026' -A x64
+    & $cmake -S $root -B $build -G $generator -A x64
     if ($LASTEXITCODE -ne 0) { throw 'Falha ao configurar o CMake.' }
 }
 

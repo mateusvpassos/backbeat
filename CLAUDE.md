@@ -2,7 +2,7 @@
 
 Host de bateria eletrônica: EDRUM (MIDI) → SSD5 (VST3) → Behringer (ASIO), com captura do Chrome (WASAPI loopback por processo), entradas da Behringer, mixer e gravação em faixas sincronizadas.
 
-C++20 / JUCE 8.0.15 / CMake (gerador VS 2026). Interface em português do Brasil.
+C++20 / JUCE 8.0.15 / CMake (gerador VS 2022 ou 2026, detectado pelo `build.ps1` via vswhere). Interface em português do Brasil. Repo público, licença AGPLv3 (obrigatória por causa do JUCE/ASIO, não MIT); mudanças vão no `CHANGELOG.md` (seção Não lançado).
 
 ## Comandos
 ```powershell
@@ -27,6 +27,7 @@ C++20 / JUCE 8.0.15 / CMake (gerador VS 2026). Interface em português do Brasil
 - Testes de ponta a ponta no app: `BACKBEAT_DATA` temporário com `gravacao.pasta` também temporária, para não escrever em `Música\Backbeat`.
 - Dados de teste isolados: `BACKBEAT_DATA=<pasta temporária>`. Nunca mexa no `%APPDATA%\Backbeat` real.
 - `external/` (JUCE) e `build/` ficam fora do git.
+- Git Bash: rodar scripts com `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Test` (política de execução bloqueia), e flags do MSBuild como `/nologo` viram caminho (use `MSYS_NO_PATHCONV=1`).
 
 ## Fluxo
-Ao terminar uma mudança: `.\scripts\build.ps1 -Test`, conferir a tela (dados de teste isolados), commit + push na `main` (repo privado `mateusvpassos/backbeat`) e reinstalar com `.\scripts\install.ps1 -NoBuild` (o app precisa estar fechado).
+Ao terminar uma mudança: `.\scripts\build.ps1 -Test`, conferir a tela (dados de teste isolados), commit + push na `main` (`mateusvpassos/backbeat`) e reinstalar com `.\scripts\install.ps1 -NoBuild` (o app precisa estar fechado).

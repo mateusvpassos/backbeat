@@ -74,7 +74,7 @@ MainComponent::MainComponent()
     titleLabel.setText ("Backbeat", juce::dontSendNotification);
     titleLabel.setFont (theme::font (16.0f, theme::Weight::semibold));
     titleLabel.setColour (juce::Label::textColourId, theme::text);
-    subtitleLabel.setText (L"bateria eletrônica + SSD5, via ASIO", juce::dontSendNotification);
+    subtitleLabel.setText (L"bateria eletrônica + VST3, via ASIO", juce::dontSendNotification);
     subtitleLabel.setFont (theme::font (12.5f));
     subtitleLabel.setColour (juce::Label::textColourId, textDim);
     logo = juce::Drawable::createFromImageData (BackbeatAssets::icon_svg, BackbeatAssets::icon_svgSize);
@@ -100,12 +100,12 @@ MainComponent::MainComponent()
     stopButton.setTooltip (L"Para a gravação ou a reprodução (F8)");
     chooseFolderButton.setTooltip (L"Onde as gravações são salvas");
 
-    styleHeader (chromeHeader, "Chrome (Songsterr)");
+    styleHeader (chromeHeader, L"Navegador (Chrome)");
     styleBody (chromeStatusLabel);
     styleCaption (chromeProcessLabel, "Processo");
     styleCaption (chromeTipLabel, L"Para não ouvir o Chrome em dobro: Configurações › Sistema › Som › Mixer de volume › "
                                   L"Chrome › Dispositivo de saída = uma saída que você não usa (ex.: alto-falantes da placa-mãe). "
-                                  L"A captura pega o áudio do Chrome em qualquer saída e o Backbeat toca pela Behringer.");
+                                  L"A captura pega o áudio do Chrome em qualquer saída e o Backbeat toca pela sua interface de áudio.");
     chromeTipLabel.setJustificationType (juce::Justification::topLeft);
     chromeTipLabel.setMinimumHorizontalScale (1.0f);
     chromeProcessEditor.setTooltip (L"Nome do executável (ex.: chrome.exe, msedge.exe, spotify.exe)");
@@ -299,15 +299,25 @@ MainComponent::MainComponent()
     setWantsKeyboardFocus (true);
 
     // Carrega o plugin depois que a janela aparece (o SSD5 leva alguns segundos).
-    pluginFile = juce::File (settings.get ("plugin", "caminho",
-                                           PluginHost::defaultDrumPluginFile().getFullPathName()).toString());
-    setStatus ("Carregando " + pluginFile.getFileName() + "...");
-    juce::Component::SafePointer<MainComponent> safe (this);
-    juce::Timer::callAfterDelay (200, [safe]
+    // Primeira execução sem o SSD5 instalado: não tenta abrir, só pede para escolher um VST3.
+    const auto savedPluginPath = settings.get ("plugin", "caminho").toString();
+    pluginFile = savedPluginPath.isNotEmpty() ? juce::File (savedPluginPath) : PluginHost::defaultDrumPluginFile();
+    if (savedPluginPath.isEmpty() && ! pluginFile.exists())
     {
-        if (safe != nullptr)
-            safe->loadDrumPlugin (safe->pluginFile);
-    });
+        setStatus (L"Nenhum plugin de bateria: clique em Trocar plugin e escolha um VST3.");
+        openPluginButton.setEnabled (false);
+        saveStateButton.setEnabled (false);
+    }
+    else
+    {
+        setStatus ("Carregando " + pluginFile.getFileName() + "...");
+        juce::Component::SafePointer<MainComponent> safe (this);
+        juce::Timer::callAfterDelay (200, [safe]
+        {
+            if (safe != nullptr)
+                safe->loadDrumPlugin (safe->pluginFile);
+        });
+    }
 
     updateDeviceStatus();
     startTimerHz (30);
@@ -540,8 +550,8 @@ void MainComponent::refreshMidiDevices()
 
     if (midiDevices.isEmpty())
     {
-        midiCombo.setTextWhenNoChoicesAvailable (L"Nenhuma entrada MIDI (a EDRUM está ligada?)");
-        midiCombo.setTextWhenNothingSelected (L"Nenhuma entrada MIDI: ligue a EDRUM e clique em Atualizar");
+        midiCombo.setTextWhenNoChoicesAvailable (L"Nenhuma entrada MIDI (a bateria está ligada?)");
+        midiCombo.setTextWhenNothingSelected (L"Nenhuma entrada MIDI: ligue a bateria e clique em Atualizar");
         midiRouter.close();
         return;
     }
@@ -1137,10 +1147,10 @@ void MainComponent::setupMixer()
     }
 
     strips[trackDrums]->setCaption (pluginName);
-    strips[trackChrome]->setCaption ("Songsterr");
+    strips[trackChrome]->setCaption ("Navegador");
 
     masterStrip = std::make_unique<ChannelStrip> (ChannelStrip::Config { "Master", theme::accent, true, false, false });
-    masterStrip->setCaption ("Behringer");
+    masterStrip->setCaption (L"Saída");
     addAndMakeVisible (*masterStrip);
     masterStrip->onGain = [this] (double db) { engine.setMasterGain (dbToGain (db)); };
     masterStrip->onGainCommitted = [this]
@@ -1590,7 +1600,7 @@ void MainComponent::updateTransportUi()
         case Recorder::State::playing:
             timeLabel.setText (formatTime (recorder.getPositionSeconds()), juce::dontSendNotification);
             timeLabel.setColour (juce::Label::textColourId, green.brighter (0.4f));
-            transportInfoLabel.setText (L"▶ Tocando o último take pelo SSD5", juce::dontSendNotification);
+            transportInfoLabel.setText (L"▶ Tocando o último take pelo plugin", juce::dontSendNotification);
             break;
 
         case Recorder::State::finishing:

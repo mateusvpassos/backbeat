@@ -68,7 +68,7 @@ ChannelStrip::ChannelStrip (Config c) : config (std::move (c))
     mute.setTooltip ("Mudo (M)");
     solo.setTooltip (L"Solo: com alguma faixa em solo, só as faixas em solo tocam");
     arm.setTooltip (L"Gravar esta entrada na próxima gravação");
-    monitor.setTooltip (L"Ouvir esta entrada pelo Backbeat (com atraso). Com o Direct Monitor da Behringer, deixe desligado.");
+    monitor.setTooltip (L"Ouvir esta entrada pelo Backbeat (com atraso). Com o monitoramento direto da interface ligado, deixe desligado.");
 
     mute.onClick    = [this] { repaint(); if (onMute) onMute (mute.getToggleState()); };
     solo.onClick    = [this] { repaint(); if (onSolo) onSolo (solo.getToggleState()); };

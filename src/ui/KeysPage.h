@@ -32,7 +32,7 @@ private:
 
     MappingContext& ctx;
     juce::Label hintLabel, warningLabel;
-    juce::ToggleButton globalToggle { "Comandos funcionam com outras janelas em foco (ex.: Songsterr no Chrome)" };
+    juce::ToggleButton globalToggle { "Comandos funcionam com outras janelas em foco (ex.: o navegador)" };
     juce::ListBox list;
     juce::TextButton addButton { "+ Adicionar tecla" };
     int captureRowOnRefresh = -1;

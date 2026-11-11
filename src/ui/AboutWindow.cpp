@@ -16,6 +16,7 @@ namespace
     };
 
     const License licenses[] = {
+        { L"Backbeat", L"© 2026 Mateus Vinícius dos Passos. Código aberto sob a GNU AGPLv3: github.com/mateusvpassos/backbeat" },
         { L"JUCE 8", L"© Raw Material Software Limited. Usado sob a GNU AGPLv3." },
         { L"ASIO", L"Tecnologia e SDK da Steinberg Media Technologies GmbH (incluído no JUCE sob a GPLv3). "
                    L"ASIO é marca registrada da Steinberg." },
@@ -86,7 +87,7 @@ namespace
             g.setColour (theme::muted);
             g.setFont (theme::font (13.0f));
             g.drawText (juce::String (L"versão ") + JUCE_APPLICATION_VERSION_STRING
-                            + L" · bateria eletrônica + SSD5 via ASIO",
+                            + L" · bateria eletrônica + VST3 via ASIO",
                         head, juce::Justification::topLeft);
 
             area.removeFromTop (22);
