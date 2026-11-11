@@ -15,7 +15,7 @@ Mudanças de cada versão do Backbeat. Formato baseado em [Keep a Changelog](htt
 
 ## [1.0.0] - 2026-11-10
 
-Versão de uso pessoal, não publicada.
+Versão de uso pessoal, publicada como código aberto em 2026-11-11.
 
 ### Adicionado
 - Host de VST3 com ASIO: toca a bateria eletrônica (MIDI) num plugin de bateria (feito para o SSD5, aceita qualquer VST3), com estado salvo por plugin.
