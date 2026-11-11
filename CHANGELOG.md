@@ -11,7 +11,7 @@ Mudanças de cada versão do Backbeat. Formato baseado em [Keep a Changelog](htt
 - README reescrito para quem chega de fora (requisitos, recursos, compilar).
 - `build.ps1` usa o Visual Studio instalado (2022 ou 2026), não só o 2026.
 - `install.ps1` cria o atalho em `Área de Trabalho\Programs` em vez de solto na área de trabalho.
-- A faixa master do mixer se chama **Master**, não mais "Behringer".
+- Interface sem nomes do equipamento do autor (Behringer, EDRUM, Songsterr); a primeira execução sem o SSD5 pede para escolher um VST3.
 
 ## [1.0.0] - 2026-11-10
 
