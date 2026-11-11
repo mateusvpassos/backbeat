@@ -210,7 +210,7 @@ void BackbeatLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
     if (on)
         c = b.getProperties().contains ("onColour") ? onColourOf (b, accent).brighter (0.35f) : accentText;
     else if (variant == "primary")
-        c = juce::Colour (0xff2b1404);
+        c = juce::Colour (0xff071a3d);
     else if (variant == "ghost")
         c = muted;
 

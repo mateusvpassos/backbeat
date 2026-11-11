@@ -19,7 +19,7 @@ public:
 
 private:
     bool vertical = false;
-    juce::Colour barColour { 0xffff9548 };
+    juce::Colour barColour { 0xff5b9dff };
     float levelDb = -100.0f;
     float holdDb = -100.0f;
     int holdFrames = 0;

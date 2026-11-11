@@ -9,6 +9,7 @@ Mudanças de cada versão do Backbeat. Formato baseado em [Keep a Changelog](htt
 - Licença GNU AGPLv3, avisos de terceiros, guia de contribuição, política de segurança e modelos de issue.
 
 ### Alterado
+- Cor do app: azul `#5b9dff` no lugar do laranja, que era quase igual à do Orfeu (ícone incluído). A faixa Bateria do mixer continua laranja.
 - Visual alinhado ao guia da família: barra de título escura em todas as janelas, títulos de painel com ícone e linha (como o `.panel-head`), botões de 30 px com ícones Lucide, diálogo **Áudio...** em português.
 - README reescrito para quem chega de fora (requisitos, recursos, compilar).
 - `build.ps1` usa o Visual Studio instalado (2022 ou 2026), não só o 2026.

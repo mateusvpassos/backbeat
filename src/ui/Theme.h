@@ -3,7 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 // Tema da família Kino/Strata/Lembreme/Overtone/Stinger/Riff/Rubato (mesmas variáveis do style.css),
-// com a cor própria do Backbeat: laranja-âmbar (baqueta).
+// com a cor própria do Backbeat: azul (#5b9dff, guia ui-style).
 namespace bb::theme
 {
 
@@ -25,10 +25,10 @@ inline const juce::Colour ok           { 0xff3ddc97 };
 inline const juce::Colour warn         { 0xffffbf47 };
 
 // ---- cor do Backbeat ----
-inline const juce::Colour accent       { 0xffff9548 };
-inline const juce::Colour accentText   { 0xffffd9b0 };
-inline const juce::Colour gradTop      { 0xffffd9a3 };
-inline const juce::Colour gradBottom   { 0xffec5f1f };
+inline const juce::Colour accent       { 0xff5b9dff };
+inline const juce::Colour accentText   { 0xffbdd8ff };
+inline const juce::Colour gradTop      { 0xffb8d4ff };
+inline const juce::Colour gradBottom   { 0xff2f6fe0 };
 inline juce::Colour accentSoft()       { return accent.withAlpha (0.14f); }
 inline juce::Colour accentLine()       { return accent.withAlpha (0.5f); }
 
