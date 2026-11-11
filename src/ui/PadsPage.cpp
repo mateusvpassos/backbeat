@@ -158,7 +158,7 @@ PadsPage::PadsPage (MappingContext& c) : ctx (c)
     theme::caption (catalogLabel, {});
     theme::caption (unmappedLabel, "Notas fora da lista");
     theme::body (lastHitLabel);
-    theme::header (velocityHeader, L"FORÇA (VELOCITY)"); // toUpperCase do JUCE não converte o "ç"
+    theme::header (velocityHeader, L"Força (velocity)");
     theme::caption (curveLabel, "Curva");
     theme::caption (minLabel, juce::String::fromUTF8 ("Mínimo"));
     theme::header (hihatHeader, "Pedal do chimbal");

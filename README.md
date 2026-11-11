@@ -88,4 +88,4 @@ Veja [CONTRIBUTING.md](CONTRIBUTING.md) e as mudanças em [CHANGELOG.md](CHANGEL
 
 ## Licença
 
-[GNU AGPLv3](LICENSE), exigida pelo JUCE (AGPLv3) e pelo ASIO SDK (GPLv3). Fonte Geist (OFL 1.1), VST 3 SDK (MIT) e marcas citadas: ver [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+[GNU AGPLv3](LICENSE), exigida pelo JUCE (AGPLv3) e pelo ASIO SDK (GPLv3). Fonte Geist (OFL 1.1), ícones Lucide (ISC), VST 3 SDK (MIT) e marcas citadas: ver [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

@@ -1,6 +1,7 @@
 #include "ui/BackbeatLookAndFeel.h"
 
 #include "BackbeatAssets.h"
+#include "ui/Icons.h"
 
 namespace bb
 {
@@ -156,6 +157,7 @@ void BackbeatLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     const bool on = b.getToggleState();
     const float alpha = b.isEnabled() ? 1.0f : 0.35f;
 
+    // .primary: --grad (só um botão principal por tela, guia ui-style).
     if (variant == "primary" && ! on)
     {
         juce::ColourGradient grad (gradTop, r.getX(), r.getY(), gradBottom, r.getRight(), r.getBottom(), false);
@@ -191,9 +193,11 @@ void BackbeatLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     g.drawRoundedRectangle (r, radius, 1.0f);
 }
 
-juce::Font BackbeatLookAndFeel::getTextButtonFont (juce::TextButton&, int buttonHeight)
+// button: 12.5px, peso 500 (primary: 600).
+juce::Font BackbeatLookAndFeel::getTextButtonFont (juce::TextButton& b, int buttonHeight)
 {
-    return theme::font (juce::jmin (13.0f, buttonHeight * 0.48f), theme::Weight::medium);
+    const auto weight = b.getProperties()["variant"].toString() == "primary" ? theme::Weight::semibold : theme::Weight::medium;
+    return theme::font (juce::jmin (12.5f, buttonHeight * 0.46f), weight);
 }
 
 void BackbeatLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool down)
@@ -206,15 +210,39 @@ void BackbeatLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
     if (on)
         c = b.getProperties().contains ("onColour") ? onColourOf (b, accent).brighter (0.35f) : accentText;
     else if (variant == "primary")
-        c = juce::Colour (0xff1c0f06);
+        c = juce::Colour (0xff2b1404);
     else if (variant == "ghost")
         c = muted;
 
-    g.setColour (c.withMultipliedAlpha (b.isEnabled() ? 1.0f : 0.35f));
-    g.setFont (getTextButtonFont (b, b.getHeight()));
+    c = c.withMultipliedAlpha (b.isEnabled() ? 1.0f : 0.35f);
+    const auto font = getTextButtonFont (b, b.getHeight());
     auto r = b.getLocalBounds().reduced (6, 0);
     if (down)
         r = r.translated (0, 1);
+
+    // Ícone opcional (propriedade "icon"): 15px à esquerda do texto, o par centrado, gap 6px.
+    const auto iconName = b.getProperties()["icon"].toString();
+    if (iconName.isNotEmpty())
+    {
+        constexpr float iconSize = 15.0f, gap = 6.0f;
+        const auto label = b.getButtonText();
+        const float textW = label.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (font, label);
+        const float total = juce::jmin ((float) r.getWidth(), iconSize + (label.isEmpty() ? 0.0f : gap + textW));
+        auto row = r.toFloat().withSizeKeepingCentre (total, (float) r.getHeight());
+        const auto iconColour = (iconName == "record" && ! on) ? danger.withMultipliedAlpha (c.getFloatAlpha()) : c;
+        icons::draw (g, iconName, row.removeFromLeft (iconSize).withSizeKeepingCentre (iconSize, iconSize), iconColour);
+        if (label.isNotEmpty())
+        {
+            row.removeFromLeft (gap);
+            g.setColour (c);
+            g.setFont (font);
+            g.drawFittedText (label, row.toNearestInt(), juce::Justification::centredLeft, 1, 0.9f);
+        }
+        return;
+    }
+
+    g.setColour (c);
+    g.setFont (font);
     g.drawFittedText (b.getButtonText(), r, juce::Justification::centred, 1, 0.9f);
 }
 

@@ -63,11 +63,19 @@ inline juce::String upper (const juce::String& t)
     return s;
 }
 
-// .lbl: 11px, 600, maiúsculas espaçadas, cinza.
+// h2 do .panel-head: 14px, 600, cor do texto (o ícone do painel é desenhado à esquerda).
 inline void header (juce::Label& l, const juce::String& t)
 {
+    l.setText (t, juce::dontSendNotification);
+    l.setFont (font (14.0f, Weight::semibold).withExtraKerningFactor (-0.01f));
+    l.setColour (juce::Label::textColourId, text);
+}
+
+// .lbl: 11px, 600, maiúsculas espaçadas, cinza (rótulos pequenos dentro dos painéis).
+inline void lbl (juce::Label& l, const juce::String& t)
+{
     l.setText (upper (t), juce::dontSendNotification);
-    l.setFont (font (11.5f, Weight::semibold).withExtraKerningFactor (0.06f));
+    l.setFont (font (11.0f, Weight::semibold).withExtraKerningFactor (0.06f));
     l.setColour (juce::Label::textColourId, muted);
 }
 

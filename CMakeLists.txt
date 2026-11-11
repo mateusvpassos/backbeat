@@ -81,6 +81,8 @@ target_sources(Backbeat PRIVATE
     src/ui/PluginWindow.cpp
     src/ui/LevelMeter.cpp
     src/ui/BackbeatLookAndFeel.cpp
+    src/ui/Icons.cpp
+    src/ui/WindowChrome.cpp
     src/ui/ChannelStrip.cpp
     src/ui/AboutWindow.cpp
     src/ui/BeatIndicator.cpp

@@ -1,4 +1,5 @@
 #include "ui/PluginWindow.h"
+#include "ui/WindowChrome.h"
 
 namespace bb
 {
@@ -16,6 +17,7 @@ PluginWindow::PluginWindow (juce::AudioProcessor& p)
     setResizable (editor->isResizable(), false);
     centreWithSize (getWidth(), getHeight());
     setVisible (true);
+    darkTitleBar (*this);
 }
 
 PluginWindow::~PluginWindow()

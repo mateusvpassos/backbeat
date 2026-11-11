@@ -1,4 +1,6 @@
 #include "ui/MainComponent.h"
+#include "ui/WindowChrome.h"
+#include "ui/Icons.h"
 
 #include "ui/AboutWindow.h"
 #include "util/DrumNames.h"
@@ -72,7 +74,7 @@ MainComponent::MainComponent()
 {
     // ---------- interface ----------
     titleLabel.setText ("Backbeat", juce::dontSendNotification);
-    titleLabel.setFont (theme::font (16.0f, theme::Weight::semibold));
+    titleLabel.setFont (theme::font (13.5f, theme::Weight::semibold).withExtraKerningFactor (-0.01f));
     titleLabel.setColour (juce::Label::textColourId, theme::text);
     subtitleLabel.setText (L"bateria eletrônica + VST3, via ASIO", juce::dontSendNotification);
     subtitleLabel.setFont (theme::font (12.5f));
@@ -158,6 +160,11 @@ MainComponent::MainComponent()
         addAndMakeVisible (c);
 
     openPluginButton.getProperties().set ("variant", "primary");
+    for (auto [button, icon] : { std::pair<juce::Button*, const char*> { &audioButton, "gear" }, { &openPluginButton, "plug" },
+                                 { &choosePluginButton, "layers" }, { &saveStateButton, "save" }, { &panicButton, "zap" },
+                                 { &aboutButton, "info" }, { &recordButton, "record" }, { &playButton, "play" },
+                                 { &stopButton, "stop" }, { &exportButton, "download" }, { &openTakeButton, "folder" } })
+        button->getProperties().set ("icon", icon);
     recordButton.getProperties().set ("onColour", (juce::int64) theme::danger.getARGB());
     playButton.getProperties().set ("onColour", (juce::int64) theme::ok.getARGB());
     setupMixer();
@@ -219,7 +226,7 @@ MainComponent::MainComponent()
         }
     };
 
-    setSize (1440, 770);
+    setSize (1440, 820);
 
     // ---------- núcleo ----------
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
@@ -460,7 +467,8 @@ void MainComponent::showAudioSettings()
     options.dialogBackgroundColour = panel;
     options.useNativeTitleBar = true;
     options.resizable = false;
-    options.launchAsync();
+    if (auto* dialog = options.launchAsync())
+        darkTitleBar (*dialog);
 }
 
 void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
@@ -964,41 +972,61 @@ void MainComponent::setStatus (const juce::String& text, bool isError)
         juce::Logger::writeToLog ("ERRO: " + text);
 }
 
+int MainComponent::buttonWidth (juce::TextButton& b)
+{
+    const auto font = b.getLookAndFeel().getTextButtonFont (b, 30);
+    const bool hasIcon = b.getProperties()["icon"].toString().isNotEmpty();
+    return juce::roundToInt (juce::GlyphArrangement::getStringWidth (font, b.getButtonText())) + (hasIcon ? 21 : 0) + 24;
+}
+
+// .panel-head: ícone 16px cinza à esquerda do título e linha da borda embaixo, de lado a lado do painel.
+void MainComponent::paintPanelHead (juce::Graphics& g, juce::Label& header, const char* icon, juce::Rectangle<float> panel)
+{
+    const auto h = header.getBounds().toFloat();
+    icons::draw (g, icon, { h.getX() - 24.0f, h.getCentreY() - 8.0f, 16.0f, 16.0f }, theme::muted);
+    g.setColour (theme::border);
+    g.fillRect (panel.getX() + 1.0f, h.getBottom() + 10.0f, panel.getWidth() - 2.0f, 1.0f);
+}
+
 void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (background);
 
     // Marca (como a barra de título dos outros apps): ícone 26px + nome.
     if (logo != nullptr)
-        logo->drawWithin (g, juce::Rectangle<float> (20.0f, 16.0f, 30.0f, 30.0f), juce::RectanglePlacement::centred, 1.0f);
+        logo->drawWithin (g, juce::Rectangle<float> (16.0f, 13.0f, 22.0f, 22.0f), juce::RectanglePlacement::centred, 1.0f);
 
     // Painéis da família atrás de cada seção, na largura da coluna.
-    const auto drawPanel = [&] (juce::Component& first, juce::Component& last, juce::Rectangle<int> column)
+    const auto drawPanel = [&] (juce::Label& first, juce::Component& last, juce::Rectangle<int> column, const char* icon)
     {
         auto r = first.getBounds().getUnion (last.getBounds()).expanded (14, 12).toFloat();
         r.setLeft ((float) column.getX() - 14.0f);
         r.setRight ((float) column.getRight() + 14.0f);
         theme::drawPanel (g, r);
+        paintPanelHead (g, first, icon, r);
     };
 
     // O último painel de cada coluna desce até o fim da área de cima: as três colunas terminam alinhadas.
-    const auto drawLastPanel = [&] (juce::Component& first, juce::Rectangle<int> column)
+    const auto drawLastPanel = [&] (juce::Label& first, juce::Rectangle<int> column, const char* icon)
     {
         auto r = juce::Rectangle<int>::leftTopRightBottom (column.getX(), first.getY(), column.getRight(), topArea.getBottom())
                      .expanded (14, 12).toFloat();
         theme::drawPanel (g, r);
+        paintPanelHead (g, first, icon, r);
     };
 
-    drawPanel (deviceHeader, perfLabel, leftColumn);
-    drawLastPanel (midiHeader, leftColumn);
-    drawPanel (transportHeader, folderLabel, middleColumn);
-    drawLastPanel (metronomeHeader, middleColumn);
-    drawLastPanel (chromeHeader, rightColumn);
-    theme::drawPanel (g, mixerArea.expanded (14, 0).toFloat()); // mesmas bordas dos painéis de cima
+    drawPanel (deviceHeader, perfLabel, leftColumn, "speaker");
+    drawLastPanel (midiHeader, leftColumn, "drum");
+    drawPanel (transportHeader, folderLabel, middleColumn, "record");
+    drawLastPanel (metronomeHeader, middleColumn, "metronome");
+    drawLastPanel (chromeHeader, rightColumn, "waves");
+    const auto mixerPanel = mixerArea.expanded (14, 0).toFloat(); // mesmas bordas dos painéis de cima
+    theme::drawPanel (g, mixerPanel);
+    paintPanelHead (g, mixerHeader, "sliders", mixerPanel);
 
     // linha da barra de título
     g.setColour (theme::border);
-    g.fillRect (0, 60, getWidth(), 1);
+    g.fillRect (0, headerHeight, getWidth(), 1);
 }
 
 void MainComponent::resized()
@@ -1008,29 +1036,29 @@ void MainComponent::resized()
 
     // ---- barra de título: marca à esquerda, ações à direita ----
     {
-        auto top = area.removeFromTop (60).reduced (20, 15);
-        top.removeFromLeft (40); // ícone
-        titleLabel.setBounds (top.removeFromLeft (90));
-        subtitleLabel.setBounds (top.removeFromLeft (260));
+        auto top = area.removeFromTop (headerHeight).reduced (16, 9);
+        top.removeFromLeft (31); // ícone 22px + gap 9px
+        titleLabel.setBounds (top.removeFromLeft (76));
+        subtitleLabel.setBounds (top.removeFromLeft (300));
 
         for (auto* b : { &aboutButton, &panicButton, &saveStateButton, &choosePluginButton, &openPluginButton, &audioButton })
         {
-            b->setBounds (top.removeFromRight (b == &openPluginButton ? 160 : b == &aboutButton ? 80 : 118));
-            top.removeFromRight (8);
+            b->setBounds (top.removeFromRight (buttonWidth (*b)));
+            top.removeFromRight (6);
         }
     }
 
     area = area.reduced (24, 0);
-    area.removeFromTop (22);
+    area.removeFromTop (20);
 
     // ---- mixer embaixo, largura toda ----
-    mixerArea = area.removeFromBottom (318).withTrimmedBottom (6);
+    mixerArea = area.removeFromBottom (330).withTrimmedBottom (6);
     {
         auto m = mixerArea.reduced (0, 12);
         auto head = m.removeFromTop (18);
         mixerHeader.setBounds (head.removeFromLeft (80));
         mixerHint.setBounds (head);
-        m.removeFromTop (10);
+        m.removeFromTop (headGap);
 
         constexpr int stripW = 170, gap = 10;
         for (int t = 0; t < numTracks; ++t)
@@ -1061,19 +1089,25 @@ void MainComponent::resized()
     middleColumn = area.removeFromLeft (colW);
     area.removeFromLeft (gap);
     rightColumn = area;
+    const auto placeHeaders = [this]
+    {
+        // o ícone do .panel-head ocupa 16px + 8px à esquerda do título
+        for (auto* h : { &deviceHeader, &midiHeader, &transportHeader, &metronomeHeader, &chromeHeader, &mixerHeader })
+            h->setBounds (h->getBounds().withTrimmedLeft (24));
+    };
 
     // ================= coluna esquerda =================
     auto col = leftColumn;
 
     deviceHeader.setBounds (col.removeFromTop (18));
-    col.removeFromTop (4);
+    col.removeFromTop (headGap);
     deviceLabel.setBounds (col.removeFromTop (22));
     latencyLabel.setBounds (col.removeFromTop (22));
     perfLabel.setBounds (col.removeFromTop (20));
     col.removeFromTop (34);
 
     midiHeader.setBounds (col.removeFromTop (18));
-    col.removeFromTop (6);
+    col.removeFromTop (headGap);
     {
         auto row = col.removeFromTop (28);
         midiInputLabel.setBounds (row.removeFromLeft (110));
@@ -1104,7 +1138,7 @@ void MainComponent::resized()
     col = middleColumn;
 
     transportHeader.setBounds (col.removeFromTop (18));
-    col.removeFromTop (6);
+    col.removeFromTop (headGap);
     {
         auto row = col.removeFromTop (34);
         for (auto* b : { &recordButton, &playButton, &stopButton })
@@ -1139,7 +1173,7 @@ void MainComponent::resized()
         metronomeHeader.setBounds (head.removeFromLeft (140));
         beatIndicator.setBounds (head.removeFromRight (180));
     }
-    col.removeFromTop (6);
+    col.removeFromTop (headGap);
     {
         auto row = col.removeFromTop (28);
         metronomeToggle.setBounds (row.removeFromLeft (92));
@@ -1169,7 +1203,7 @@ void MainComponent::resized()
     col = rightColumn;
 
     chromeHeader.setBounds (col.removeFromTop (18));
-    col.removeFromTop (6);
+    col.removeFromTop (headGap);
     chromeToggle.setBounds (col.removeFromTop (26).removeFromLeft (260));
     col.removeFromTop (6);
     {
@@ -1181,6 +1215,8 @@ void MainComponent::resized()
     chromeStatusLabel.setBounds (col.removeFromTop (22));
     col.removeFromTop (8);
     chromeTipLabel.setBounds (col.removeFromTop (100));
+
+    placeHeaders();
 }
 
 // ---------------------------------------------------------------------------

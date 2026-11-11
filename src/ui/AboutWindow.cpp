@@ -1,4 +1,5 @@
 #include "ui/AboutWindow.h"
+#include "ui/WindowChrome.h"
 
 #include "ui/Theme.h"
 
@@ -22,6 +23,7 @@ namespace
                    L"ASIO é marca registrada da Steinberg." },
         { L"VST 3 SDK", L"© Steinberg Media Technologies GmbH, licença MIT. VST é marca registrada da Steinberg." },
         { L"Geist", L"Fonte © The Geist Project Authors, SIL Open Font License 1.1." },
+        { L"Lucide", L"Ícones © Lucide Icons and Contributors, licença ISC (alguns derivados do Feather, MIT)." },
         { L"SSD5", L"O SSD5 e suas amostras são da Steven Slate Drums e não acompanham o Backbeat." },
     };
 
@@ -160,7 +162,8 @@ void showAboutWindow (const juce::StringArray& shortcuts, const juce::File& data
     options.dialogBackgroundColour = theme::bg;
     options.useNativeTitleBar = true;
     options.resizable = false;
-    options.launchAsync();
+    if (auto* dialog = options.launchAsync())
+        darkTitleBar (*dialog);
 }
 
 } // namespace bb

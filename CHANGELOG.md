@@ -9,6 +9,7 @@ Mudanças de cada versão do Backbeat. Formato baseado em [Keep a Changelog](htt
 - Licença GNU AGPLv3, avisos de terceiros, guia de contribuição, política de segurança e modelos de issue.
 
 ### Alterado
+- Visual alinhado ao guia da família: barra de título escura em todas as janelas, títulos de painel com ícone e linha (como o `.panel-head`), botões de 30 px com ícones Lucide, diálogo **Áudio...** em português.
 - README reescrito para quem chega de fora (requisitos, recursos, compilar).
 - `build.ps1` usa o Visual Studio instalado (2022 ou 2026), não só o 2026.
 - `install.ps1` cria o atalho em `Área de Trabalho\Programs` em vez de solto na área de trabalho.

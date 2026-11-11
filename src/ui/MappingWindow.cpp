@@ -1,4 +1,5 @@
 #include "ui/MappingWindow.h"
+#include "ui/WindowChrome.h"
 
 namespace bb
 {
@@ -34,6 +35,7 @@ MappingWindow::MappingWindow (MappingContext& ctx)
     setResizeLimits (760, 520, 1600, 1400);
     centreWithSize (getWidth(), getHeight());
     setVisible (true);
+    darkTitleBar (*this);
 }
 
 void MappingWindow::refresh()

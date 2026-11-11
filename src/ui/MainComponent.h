@@ -145,7 +145,7 @@ private:
     juce::ComboBox profileCombo;
     juce::TextButton mappingButton { "Mapeamento..." };
     juce::Label transportHeader, timeLabel, transportInfoLabel, folderLabel;
-    juce::TextButton recordButton { L"● Gravar" }, playButton { L"▶ Tocar" }, stopButton { L"■ Parar" },
+    juce::TextButton recordButton { "Gravar" }, playButton { "Tocar" }, stopButton { "Parar" },
                      chooseFolderButton { "Pasta..." }, openTakeButton { L"Abrir pasta do take" };
 
     juce::Label chromeHeader, chromeStatusLabel, chromeTipLabel, chromeProcessLabel;
@@ -171,6 +171,12 @@ private:
     std::unique_ptr<ChannelStrip> strips[numTracks];
     std::unique_ptr<ChannelStrip> masterStrip;
     std::unique_ptr<juce::Drawable> logo;
+
+    // Layout da família: barra do topo de 48px; título do painel, linha do .panel-head e conteúdo.
+    static constexpr int headerHeight = 48;
+    static constexpr int headGap = 22;
+    static int buttonWidth (juce::TextButton& b);  // texto + ícone + padding de 11px
+    void paintPanelHead (juce::Graphics&, juce::Label& header, const char* icon, juce::Rectangle<float> panel);
     juce::Label statusLabel;
 
     juce::Array<juce::MidiDeviceInfo> midiDevices;
