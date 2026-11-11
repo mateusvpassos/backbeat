@@ -31,3 +31,4 @@ C++20 / JUCE 8.0.15 / CMake (gerador VS 2022 ou 2026, detectado pelo `build.ps1`
 
 ## Fluxo
 Ao terminar uma mudança: `.\scripts\build.ps1 -Test`, conferir a tela (dados de teste isolados), commit + push na `main` (`mateusvpassos/backbeat`) e reinstalar com `.\scripts\install.ps1 -NoBuild` (o app precisa estar fechado).
+- Smart App Control do Windows às vezes bloqueia um build novo ("Uma política de Controle de Aplicativo bloqueou este arquivo"): é por hash; outro build costuma passar. Não é bug do código.
